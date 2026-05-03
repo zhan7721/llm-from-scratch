@@ -1,6 +1,6 @@
-# LLM From Scratch
+# LLM From Scratch — Build a Large Language Model from Scratch in Pure PyTorch
 
-Build a Large Language Model from scratch in pure PyTorch.
+A hands-on learning project that guides you through building a complete Large Language Model using only PyTorch. From tokenization to serving, every component is implemented from scratch with clear explanations and practical exercises. This project covers the full LLM lifecycle: foundations, pretraining, fine-tuning, reinforcement learning, multimodal capabilities, agents, and inference optimization.
 
 ## Learning Path
 
@@ -26,10 +26,10 @@ This project is organized into 7 modules, each covering a key area of LLM develo
 Each chapter follows a consistent structure:
 
 - **README.md** — Concepts and theory explained
-- **Implementation** — Core code building the component from scratch
-- **Exercise** — Practice problems to reinforce understanding
-- **Solution** — Reference solutions for the exercises
-- **Tests** — pytest-based tests to verify correctness
+- **\*.py** — Core implementation building the component from scratch
+- **exercise.py** — Practice problems to reinforce understanding
+- **solution.py** — Reference solutions for the exercises
+- **tests.py** — pytest-based tests to verify correctness
 
 ## Hardware Requirements
 
