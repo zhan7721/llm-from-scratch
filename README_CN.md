@@ -1,46 +1,125 @@
-# LLM From Scratch — 从零开始，使用纯 PyTorch 构建大语言模型
+# LLM From Scratch
 
-一个实践性学习项目，引导你仅使用 PyTorch 构建完整的大语言模型。从分词到模型服务，每个组件都从零实现，并配有清晰的解释和实用练习。本项目涵盖 LLM 的完整生命周期：基础、预训练、微调、强化学习、多模态能力、智能体和推理优化。
+从零开始，使用纯 PyTorch 构建大语言模型。
+
+## 项目概述
+
+本项目教你如何从零实现 LLM 的每个组件 —— 不使用高级框架，仅用 PyTorch。每个章节包含：
+- 清晰的讲解（英文 + 中文）
+- 可运行的实现代码
+- 带 TODO 的动手练习
+- 参考答案
+- 验证你工作的测试
 
 ## 学习路径
 
-本项目分为 7 个模块，涵盖 LLM 开发的各个核心领域：
+### 01-foundations — 核心组件
 
-| # | 模块 | 主题 |
-|---|------|------|
-| 01 | **基础** | 分词器、嵌入、注意力机制、Transformer Block、模型架构、MoE、KV Cache、长上下文 |
-| 02 | **预训练** | 数据管道、数据工程、训练循环、分布式训练、缩放定律、评估 |
-| 03 | **SFT** | 指令微调、LoRA、QLoRA、NEFTune、聊天模板、长上下文 SFT |
-| 04 | **强化学习** | 奖励模型、PPO、DPO、Online DPO、GRPO、PRM、奖励黑客 |
-| 05 | **多模态** | 视觉编码器、VLM、扩散模型、语音识别、语音生成 |
-| 06 | **智能体** | 工具调用、推理、MCP、多智能体、代码解释器 |
-| 07 | **推理** | 量化、投机解码、连续批处理、模型服务 |
+| 章节 | 主题 | 核心概念 |
+|------|------|----------|
+| 01_tokenizer | BPE 分词 | Byte-Pair Encoding，子词分词 |
+| 02_embedding | 嵌入 | 词嵌入，RoPE 位置编码 |
+| 03_attention | 注意力机制 | 多头注意力，分组查询注意力 |
+| 04_transformer_block | Transformer Block | Pre-Norm，SwiGLU FFN，RMSNorm，残差连接 |
+| 05_model_architecture | GPT 模型 | 完整模型组装，权重共享，生成 |
+| 06_moe | 混合专家 | Top-K 路由，专家网络，负载均衡 |
+| 07_kv_cache | KV Cache | 高效自回归推理 |
+| 08_long_context | 长上下文 | RoPE 缩放，YaRN，位置插值 |
 
-## 前置要求
+### 02-pretrain — 预训练（即将推出）
 
-- Python 3.10+
-- PyTorch 2.0+
+数据管道，数据工程，训练循环，分布式训练，缩放定律，评估。
 
-## 使用方法
+### 03-sft — 监督微调（即将推出）
 
-每个章节遵循统一的结构：
+指令微调，LoRA，QLoRA，NEFTune，聊天模板，长上下文 SFT。
 
-- **README.md** — 概念与理论讲解
-- **\*.py** — 从零构建核心组件的实现代码
-- **exercise.py** — 巩固理解的实践题
-- **solution.py** — 练习的参考实现
-- **tests.py** — 基于 pytest 的测试，用于验证正确性
+### 04-rl — 强化学习（即将推出）
 
-## 硬件要求
+奖励模型，PPO，DPO，Online DPO，GRPO，过程奖励模型，奖励黑客防御。
 
-| 级别 | 硬件 | 说明 |
-|------|------|------|
-| 最低配置 | Mac M1/M2 或 NVIDIA RTX 3060 | 足够运行小模型和学习练习 |
-| 推荐配置 | NVIDIA RTX 3090 | 可训练更大模型并进行分布式实验 |
+### 05-multimodal — 多模态（即将推出）
+
+视觉编码器 (ViT)，视觉语言模型，扩散模型，语音识别，语音生成。
+
+### 06-agent — 智能体（即将推出）
+
+工具调用，推理 (CoT)，MCP，多智能体系统，代码解释器。
+
+### 07-inference — 推理优化（即将推出）
+
+量化 (GPTQ/AWQ)，投机解码，连续批处理，模型服务。
 
 ## 快速开始
 
 ```bash
+# 安装依赖
 pip install -r requirements.txt
+
+# 运行所有测试
 pytest 01-foundations/ -v
+
+# 运行特定章节
+pytest 01-foundations/03_attention/tests.py -v
+
+# 运行分词器演示
+python 01-foundations/01_tokenizer/train_tokenizer.py
 ```
+
+## 每个章节包含
+
+```
+chapter_name/
+├── README.md / README_CN.md   # 教程（英文 + 中文）
+├── implementation.py           # 核心实现
+├── exercise.py                 # 填写 TODO
+├── solution.py                 # 参考答案
+└── tests.py                    # 验证你的工作
+```
+
+## 硬件要求
+
+| 要求 | 最低配置 | 推荐配置 |
+|------|----------|----------|
+| GPU | Mac M1/M2 (MPS) 或 RTX 3060 (12GB) | RTX 3090 (24GB) |
+| 内存 | 8GB | 16GB |
+| Python | 3.10+ | 3.11+ |
+
+## 依赖
+
+- PyTorch 2.0+
+- pytest（测试）
+- tiktoken（BPE 对比）
+- transformers（权重加载对比）
+- datasets（示例数据下载）
+- wandb（可选，训练监控）
+
+## 项目结构
+
+```
+llm-from-scratch/
+├── 01-foundations/     # 核心 LLM 组件
+├── 02-pretrain/        # 预训练
+├── 03-sft/             # 监督微调
+├── 04-rl/              # 强化学习
+├── 05-multimodal/      # 视觉 + 语音
+├── 06-agent/           # 智能体 + 工具
+├── 07-inference/       # 推理优化
+├── configs/            # 训练配置
+├── data/               # 示例数据集
+├── scripts/            # 工具脚本
+└── tests/              # 集成测试
+```
+
+## 参考文献
+
+- [Attention Is All You Need](https://arxiv.org/abs/1706.03762) — 原始 Transformer
+- [LLaMA: Open and Efficient Foundation LLMs](https://arxiv.org/abs/2302.13971) — LLaMA 架构
+- [RoFormer: Enhanced Transformer with Rotary Position Embedding](https://arxiv.org/abs/2104.09864) — RoPE
+- [YaRN: Efficient Context Window Extension of LLMs](https://arxiv.org/abs/2309.00071) — YaRN
+- [Switch Transformers: Scaling to Trillion Parameter Models](https://arxiv.org/abs/2101.03961) — MoE
+- [DPO: Direct Preference Optimization](https://arxiv.org/abs/2305.18290) — DPO
+
+## 许可证
+
+MIT
