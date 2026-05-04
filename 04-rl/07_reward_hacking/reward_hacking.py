@@ -20,7 +20,8 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from typing import Dict, List, Optional, Callable, Tuple
-import math
+
+
 
 
 # ============================================================
@@ -257,9 +258,9 @@ class KLConstrainedReward(nn.Module):
         reference_logits: torch.Tensor,
         attention_mask: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
-        """Compute KL divergence between policy and reference distributions.
+        """Compute KL divergence between reference and policy distributions.
 
-        KL(pi || pi_ref) = sum_v pi(v) * (log pi(v) - log pi_ref(v))
+        KL(pi_ref || pi) = sum_v pi_ref(v) * (log pi_ref(v) - log pi(v))
 
         We compute this per-token and then average over positions and batch.
 
@@ -481,45 +482,50 @@ def analyze_reward_hacking(
         - "reward_inflation": reward - quality (positive = inflated)
         - "is_hacking": 1.0 if reward inflation is high, else 0.0
     """
+    was_training = reward_model.training
     reward_model.eval()
 
-    with torch.no_grad():
-        rewards = reward_model(input_ids)
-        qualities = quality_fn(input_ids)
+    try:
+        with torch.no_grad():
+            rewards = reward_model(input_ids)
+            qualities = quality_fn(input_ids)
 
-    # Ensure 1D
-    rewards = rewards.reshape(-1)
-    qualities = qualities.reshape(-1)
+        # Ensure 1D
+        rewards = rewards.reshape(-1)
+        qualities = qualities.reshape(-1)
 
-    # Compute correlation
-    reward_mean = rewards.mean()
-    quality_mean = qualities.mean()
+        # Compute correlation
+        reward_mean = rewards.mean()
+        quality_mean = qualities.mean()
 
-    rewards_centered = rewards - reward_mean
-    qualities_centered = qualities - quality_mean
+        rewards_centered = rewards - reward_mean
+        qualities_centered = qualities - quality_mean
 
-    cov = (rewards_centered * qualities_centered).mean()
-    reward_std = rewards_centered.std().clamp(min=1e-8)
-    quality_std = qualities_centered.std().clamp(min=1e-8)
+        cov = (rewards_centered * qualities_centered).mean()
+        reward_std = rewards_centered.std().clamp(min=1e-8)
+        quality_std = qualities_centered.std().clamp(min=1e-8)
 
-    correlation = (cov / (reward_std * quality_std)).item()
+        correlation = (cov / (reward_std * quality_std)).item()
 
-    # Reward inflation: how much reward exceeds quality
-    # Normalize both to [0, 1] for comparison
-    reward_normalized = (rewards - rewards.min()) / (rewards.max() - rewards.min() + 1e-8)
-    quality_normalized = (qualities - qualities.min()) / (qualities.max() - qualities.min() + 1e-8)
+        # Reward inflation: how much reward exceeds quality
+        # Normalize both to [0, 1] for comparison
+        reward_normalized = (rewards - rewards.min()) / (rewards.max() - rewards.min() + 1e-8)
+        quality_normalized = (qualities - qualities.min()) / (qualities.max() - qualities.min() + 1e-8)
 
-    inflation = (reward_normalized - quality_normalized).mean().item()
+        inflation = (reward_normalized - quality_normalized).mean().item()
 
-    # Flag hacking if inflation is high and correlation is low
-    is_hacking = inflation > 0.2 and correlation < 0.3
+        # Flag hacking if inflation is high and correlation is low
+        is_hacking = inflation > 0.2 and correlation < 0.3
 
-    return {
-        "mean_reward": reward_mean.item(),
-        "mean_quality": quality_mean.item(),
-        "correlation": correlation,
-        "reward_std": reward_std.item(),
-        "quality_std": quality_std.item(),
-        "reward_inflation": inflation,
-        "is_hacking": float(is_hacking),
-    }
+        return {
+            "mean_reward": reward_mean.item(),
+            "mean_quality": quality_mean.item(),
+            "correlation": correlation,
+            "reward_std": reward_std.item(),
+            "quality_std": quality_std.item(),
+            "reward_inflation": inflation,
+            "is_hacking": float(is_hacking),
+        }
+    finally:
+        if was_training:
+            reward_model.train()

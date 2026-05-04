@@ -496,9 +496,10 @@ class TestRewardEnsemble:
         ensemble_result = ensemble.forward(input_batch)
         ensemble_variance = ensemble_result["mean_reward"].var().item()
 
-        # The ensemble mean should have variance, but on average
-        # the ensemble should reduce the extreme behavior
-        assert ensemble_variance >= 0  # Sanity check
+        # The ensemble mean should have lower variance than individual models
+        avg_individual_variance = sum(individual_variances) / len(individual_variances)
+        # Ensemble variance should be less than or equal to average individual variance
+        assert ensemble_variance <= avg_individual_variance + 1e-6
 
     def test_parameters_tracked(self):
         """Ensemble parameters should be tracked by PyTorch."""
@@ -562,6 +563,8 @@ class TestAnalyzeRewardHacking:
         # Should have low correlation (not strictly 0 due to randomness)
         # We just check it does not crash and returns reasonable values
         assert -1.0 <= result["correlation"] <= 1.0
+        # With random quality, correlation should be low
+        assert abs(result["correlation"]) < 0.5
 
     def test_reward_inflation_positive_when_hacked(self):
         """Inflation should be positive when reward exceeds quality."""
@@ -576,6 +579,8 @@ class TestAnalyzeRewardHacking:
         result = analyze_reward_hacking(reward_model, quality_fn, input_ids)
         # With constant quality, inflation calculation should work
         assert "reward_inflation" in result
+        # With constant quality and varying reward, inflation should be positive
+        assert result["reward_inflation"] >= 0
 
     def test_no_hacking_with_matching_signals(self):
         """Should not flag hacking when reward and quality align."""
@@ -605,6 +610,8 @@ class TestAnalyzeRewardHacking:
         # With random quality, correlation should be low
         # and inflation should be detectable
         assert result["is_hacking"] in (0.0, 1.0)  # Should be a valid flag
+        # With random quality, correlation should be low
+        assert abs(result["correlation"]) < 0.5
 
     def test_values_are_floats(self):
         """All returned values should be Python floats."""
