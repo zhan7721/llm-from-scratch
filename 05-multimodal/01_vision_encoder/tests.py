@@ -156,7 +156,7 @@ class TestVisionTransformer:
         """Model in inference mode should produce correct output shape."""
         config = _small_config()
         model = VisionTransformer(config, num_classes=10)
-        model.training = False
+        model.eval()
 
         assert not model.training
         x = _dummy_images(config, batch_size=1)
@@ -167,7 +167,7 @@ class TestVisionTransformer:
         """Model should work with different batch sizes."""
         config = _small_config()
         model = VisionTransformer(config, num_classes=10)
-        model.training = False
+        model.eval()
 
         for batch_size in [1, 2, 4]:
             x = _dummy_images(config, batch_size=batch_size)
@@ -206,7 +206,7 @@ class TestVisionTransformer:
         """Without head, the CLS token (position 0) should be present in output."""
         config = _small_config()
         model = VisionTransformer(config, num_classes=None)
-        model.training = False
+        model.eval()
 
         x = _dummy_images(config, batch_size=1)
         out = model(x)
@@ -219,7 +219,7 @@ class TestVisionTransformer:
         """Output should not be all identical values."""
         config = _small_config()
         model = VisionTransformer(config, num_classes=10)
-        model.training = False
+        model.eval()
 
         x = _dummy_images(config, batch_size=1)
         out = model(x)
@@ -243,7 +243,7 @@ class TestVisionTransformer:
         """In inference mode, the same input should produce the same output."""
         config = _small_config()
         model = VisionTransformer(config, num_classes=10)
-        model.training = False
+        model.eval()
 
         x = _dummy_images(config, batch_size=1)
 
