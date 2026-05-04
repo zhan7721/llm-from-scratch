@@ -26,25 +26,58 @@
 | 07_kv_cache | KV Cache | 高效自回归推理 |
 | 08_long_context | 长上下文 | RoPE 缩放，YaRN，位置插值 |
 
-### 02-pretrain — 预训练（即将推出）
+### 02-pretrain — 预训练
 
-数据管道，数据工程，训练循环，分布式训练，缩放定律，评估。
+| 章节 | 主题 | 核心概念 |
+|------|------|----------|
+| 01_data_pipeline | 数据管道 | 动态填充，序列打包，DataLoader |
+| 02_data_engineering | 数据工程 | MinHash 去重，质量过滤，数据混合 |
+| 03_training_loop | 训练循环 | AdamW，余弦学习率，梯度裁剪，梯度累积 |
+| 04_distributed | 分布式训练 | DDP，FSDP，多 GPU 训练 |
+| 05_scaling_laws | 缩放定律 | Chinchilla 最优，计算最优训练 |
+| 06_evaluation | 评估 | 困惑度，基准测试，涌现能力 |
 
-### 03-sft — 监督微调（即将推出）
+### 03-sft — 监督微调
 
-指令微调，LoRA，QLoRA，NEFTune，聊天模板，长上下文 SFT。
+| 章节 | 主题 | 核心概念 |
+|------|------|----------|
+| 01_instruction_tuning | 指令微调 | Alpaca 格式，标签掩码，仅响应损失 |
+| 02_lora | LoRA | 低秩适配，参数高效微调 |
+| 03_qlora | QLoRA | NF4 量化 + LoRA，4-bit 训练 |
+| 04_neftune | NEFTune | 嵌入噪声提升泛化 |
+| 06_long_context_sft | 长上下文 SFT | 位置插值，NTK 感知缩放 |
 
-### 04-rl — 强化学习（即将推出）
+### 04-rl — 强化学习（238 个测试）
 
-奖励模型，PPO，DPO，Online DPO，GRPO，过程奖励模型，奖励黑客防御。
+| 章节 | 主题 | 核心概念 |
+|------|------|----------|
+| 01_reward_model | 奖励模型 | Bradley-Terry 模型，标量头，偏好排序 |
+| 02_ppo | PPO | 裁剪代理，GAE，KL 惩罚，rollout |
+| 03_dpo | DPO | 直接偏好优化，无参考模型 |
+| 04_online_dpo | Online DPO | 动态偏好对，在线生成 |
+| 05_grpo | GRPO | 组相对优势，无价值网络 |
+| 06_prm | 过程奖励模型 | 步骤级评分，best-of-N 选择 |
+| 07_reward_hacking | 奖励黑客 | 检测，KL 约束，奖励集成 |
 
-### 05-multimodal — 多模态（即将推出）
+### 05-multimodal — 多模态（137 个测试）
 
-视觉编码器 (ViT)，视觉语言模型，扩散模型，语音识别，语音生成。
+| 章节 | 主题 | 核心概念 |
+|------|------|----------|
+| 01_vision_encoder | 视觉 Transformer | Patch 嵌入，CLS token，位置编码 |
+| 02_vlm | 视觉语言模型 | 视觉投影器，LLaVA 架构，跨模态融合 |
+| 03_diffusion | 扩散模型 (DDPM) | 噪声调度器，U-Net，正弦时间嵌入 |
+| 04_speech_recognition | 语音识别 | Whisper 编码器-解码器，交叉注意力 |
+| 05_speech_generation | 语音生成 | TTS，WaveNet 声码器，时长预测 |
 
-### 06-agent — 智能体（即将推出）
+### 06-agent — 智能体（216 个测试）
 
-工具调用，推理 (CoT)，MCP，多智能体系统，代码解释器。
+| 章节 | 主题 | 核心概念 |
+|------|------|----------|
+| 01_tool_calling | 工具调用 | 工具注册，解析器，执行器，智能体循环 |
+| 02_reasoning | 推理 | 思维链，自一致性，步骤提取 |
+| 03_mcp | 模型上下文协议 | MCP 消息，客户端-服务器，标准化协议 |
+| 04_multi_agent | 多智能体 | 编排器，共享内存，辩论模式 |
+| 05_code_interpreter | 代码解释器 | 沙盒执行，代码解析，工件存储 |
 
 ### 07-inference — 推理优化（即将推出）
 
@@ -56,14 +89,14 @@
 # 安装依赖
 pip install -r requirements.txt
 
-# 运行所有测试
-pytest 01-foundations/ -v
+# 运行所有测试（6 个模块，591+ 个测试）
+pytest 04-rl/ 05-multimodal/ 06-agent/ -v
+
+# 运行特定模块
+pytest 04-rl/ -v
 
 # 运行特定章节
-pytest 01-foundations/03_attention/tests.py -v
-
-# 运行分词器演示
-python 01-foundations/01_tokenizer/train_tokenizer.py
+pytest 04-rl/03_dpo/tests.py -v
 ```
 
 ## 每个章节包含
@@ -113,12 +146,32 @@ llm-from-scratch/
 
 ## 参考文献
 
+### 架构
 - [Attention Is All You Need](https://arxiv.org/abs/1706.03762) — 原始 Transformer
 - [LLaMA: Open and Efficient Foundation LLMs](https://arxiv.org/abs/2302.13971) — LLaMA 架构
 - [RoFormer: Enhanced Transformer with Rotary Position Embedding](https://arxiv.org/abs/2104.09864) — RoPE
 - [YaRN: Efficient Context Window Extension of LLMs](https://arxiv.org/abs/2309.00071) — YaRN
 - [Switch Transformers: Scaling to Trillion Parameter Models](https://arxiv.org/abs/2101.03961) — MoE
-- [DPO: Direct Preference Optimization](https://arxiv.org/abs/2305.18290) — DPO
+
+### 训练与对齐
+- [Training Compute-Optimal Large Language Models (Chinchilla)](https://arxiv.org/abs/2203.15556) — 缩放定律
+- [LoRA: Low-Rank Adaptation of Large Language Models](https://arxiv.org/abs/2106.09685) — LoRA
+- [QLoRA: Efficient Finetuning of Quantized LLMs](https://arxiv.org/abs/2305.14314) — QLoRA
+- [Direct Preference Optimization](https://arxiv.org/abs/2305.18290) — DPO
+- [Proximal Policy Optimization Algorithms](https://arxiv.org/abs/1707.06347) — PPO
+- [DeepSeekMath: Pushing the Limits of Math Reasoning](https://arxiv.org/abs/2402.03300) — GRPO
+- [Let's Verify Step by Step](https://arxiv.org/abs/2305.20050) — 过程奖励模型
+
+### 多模态
+- [An Image is Worth 16x16 Words: ViT](https://arxiv.org/abs/2010.11929) — 视觉 Transformer
+- [Visual Instruction Tuning (LLaVA)](https://arxiv.org/abs/2304.08485) — 视觉语言模型
+- [Denoising Diffusion Probabilistic Models](https://arxiv.org/abs/2006.11239) — DDPM
+- [Robust Speech Recognition via Large-Scale Weak Supervision (Whisper)](https://arxiv.org/abs/2212.04356) — 语音识别
+
+### 智能体
+- [Toolformer: Language Models Can Teach Themselves to Use Tools](https://arxiv.org/abs/2302.04761) — 工具调用
+- [Chain-of-Thought Prompting Elicits Reasoning](https://arxiv.org/abs/2201.11903) — 思维链
+- [Self-Consistency Improves CoT Reasoning](https://arxiv.org/abs/2203.11171) — 自一致性
 
 ## 许可证
 
