@@ -112,7 +112,7 @@ class TestProcessRewardModel:
     def test_eval_mode(self):
         """PRM should work in inference mode."""
         prm, input_ids, step_boundaries = self._make_model_and_data()
-        prm.training = False
+        prm.eval()
         with torch.no_grad():
             scores = prm(input_ids, step_boundaries)
         assert scores.shape == (2, 3)

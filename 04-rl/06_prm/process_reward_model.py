@@ -244,8 +244,6 @@ def best_of_n_prm(
     Returns:
         Index (int) of the best candidate.
     """
-    n_candidates = step_scores.shape[0]
-
     if aggregation == 'min':
         if step_mask is not None:
             # Replace masked positions with +inf so they don't affect the min
