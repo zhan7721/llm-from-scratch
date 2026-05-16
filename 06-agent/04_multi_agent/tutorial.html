@@ -1,0 +1,344 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Multi-Agent Systems - LLM From Scratch</title>
+<style>
+:root {
+  --sidebar-bg: #1a1a2e;
+  --sidebar-text: #c8c8d8;
+  --sidebar-active: #6c63ff;
+  --main-bg: #fafafa;
+  --code-bg: #282c34;
+  --code-text: #abb2bf;
+  --accent: #6c63ff;
+  --text: #2c3e50;
+  --border: #e0e0e0;
+  --heading: #1a1a2e;
+  --inline-code-bg: #f0f0f5;
+}
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  color: var(--text);
+  background: var(--main-bg);
+  display: flex;
+  min-height: 100vh;
+  line-height: 1.7;
+}
+.sidebar {
+  width: 280px;
+  background: var(--sidebar-bg);
+  color: var(--sidebar-text);
+  padding: 30px 20px;
+  position: fixed;
+  top: 0; left: 0;
+  height: 100vh;
+  overflow-y: auto;
+  z-index: 100;
+}
+.sidebar h2 { color: #fff; font-size: 1.1em; margin-bottom: 8px; padding-bottom: 12px; border-bottom: 2px solid var(--sidebar-active); }
+.sidebar .module-tag { font-size: 0.75em; color: var(--sidebar-active); text-transform: uppercase; letter-spacing: 1.5px; margin-bottom: 20px; display: block; }
+.sidebar ul { list-style: none; }
+.sidebar li { margin: 2px 0; }
+.sidebar a { color: var(--sidebar-text); text-decoration: none; display: block; padding: 6px 12px; border-radius: 6px; font-size: 0.9em; transition: all 0.2s; }
+.sidebar a:hover { background: rgba(108,99,255,0.15); color: #fff; }
+.sidebar a.active { background: var(--sidebar-active); color: #fff; }
+.main { margin-left: 280px; padding: 40px 60px; max-width: 900px; width: 100%; }
+h1 { font-size: 2.2em; color: var(--heading); margin-bottom: 8px; letter-spacing: -0.5px; }
+.subtitle { color: #888; font-size: 1em; margin-bottom: 30px; }
+h2 { font-size: 1.5em; color: var(--heading); margin: 40px 0 16px; padding-bottom: 8px; border-bottom: 2px solid var(--border); }
+h3 { font-size: 1.2em; color: var(--heading); margin: 28px 0 12px; }
+p { margin: 12px 0; }
+table { width: 100%; border-collapse: collapse; margin: 16px 0; font-size: 0.95em; }
+th, td { padding: 10px 14px; text-align: left; border: 1px solid var(--border); }
+th { background: #f0f0f5; font-weight: 600; }
+code { background: var(--inline-code-bg); padding: 2px 6px; border-radius: 4px; font-family: "SF Mono","Fira Code","Consolas", monospace; font-size: 0.9em; }
+pre { background: var(--code-bg); color: var(--code-text); padding: 20px 24px; border-radius: 10px; overflow-x: auto; margin: 16px 0; font-size: 0.88em; line-height: 1.6; }
+pre code { background: none; padding: 0; color: inherit; font-size: inherit; }
+.key-point { background: #f0f0ff; border-left: 4px solid var(--accent); padding: 14px 20px; margin: 20px 0; border-radius: 0 8px 8px 0; font-size: 0.95em; }
+.key-point strong { color: var(--accent); }
+ul, ol { margin: 10px 0 10px 24px; }
+li { margin: 4px 0; }
+hr { border: none; border-top: 1px solid var(--border); margin: 30px 0; }
+.diagram-container { display: flex; justify-content: center; margin: 24px 0; flex-wrap: wrap; gap: 20px; }
+svg text { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+@media (max-width: 768px) {
+  .sidebar { display: none; }
+  .main { margin-left: 0; padding: 20px; }
+}
+</style>
+</head>
+<body>
+<nav class="sidebar">
+  <h2>Multi-Agent Systems</h2>
+  <span class="module-tag">Module 06 - Chapter 04</span>
+  <ul>
+    <li><a href="#overview" class="active">The Big Picture</a></li>
+    <li><a href="#agent">Agent</a></li>
+    <li><a href="#memory">SharedMemory</a></li>
+    <li><a href="#orchestrator">Orchestrator</a></li>
+    <li><a href="#system">MultiAgentSystem</a></li>
+    <li><a href="#walkthrough">Forward Pass Walkthrough</a></li>
+    <li><a href="#exercises">Exercises</a></li>
+    <li><a href="#takeaways">Key Takeaways</a></li>
+    <li><a href="#further">Further Reading</a></li>
+  </ul>
+</nav>
+
+<main class="main">
+<h1>Multi-Agent Systems</h1>
+<p class="subtitle">Module 06 -- Agents, Chapter 04</p>
+
+<p>Multi-agent systems allow multiple LLM-backed agents to collaborate on tasks that are too complex or multifaceted for a single agent. Instead of one agent doing everything, specialized agents each handle a part of the problem, share their results, and build on each other's work. This module implements three coordination patterns: sequential pipelines, parallel execution, and multi-round debates.</p>
+
+<hr>
+
+<h2 id="overview">The Big Picture</h2>
+
+<p>A multi-agent system coordinates several specialized agents to solve a task together:</p>
+
+<div class="diagram-container">
+<svg width="520" height="360" viewBox="0 0 520 360">
+  <defs>
+    <marker id="arrow" markerWidth="10" markerHeight="7" refX="10" refY="3.5" orient="auto"><polygon points="0 0, 10 3.5, 0 7" fill="#6c63ff"/></marker>
+    <marker id="arrow-g" markerWidth="10" markerHeight="7" refX="10" refY="3.5" orient="auto"><polygon points="0 0, 10 3.5, 0 7" fill="#28a745"/></marker>
+    <marker id="arrow-y" markerWidth="10" markerHeight="7" refX="10" refY="3.5" orient="auto"><polygon points="0 0, 10 3.5, 0 7" fill="#ffc107"/></marker>
+    <marker id="arrow-o" markerWidth="10" markerHeight="7" refX="10" refY="3.5" orient="auto"><polygon points="0 0, 10 3.5, 0 7" fill="#e67e22"/></marker>
+  </defs>
+  <!-- User task -->
+  <rect x="180" y="10" width="160" height="36" rx="8" fill="#e8e6ff" stroke="#6c63ff" stroke-width="2"/>
+  <text x="260" y="33" text-anchor="middle" fill="#1a1a2e" font-size="13" font-weight="600">User task</text>
+  <line x1="260" y1="46" x2="260" y2="66" stroke="#6c63ff" stroke-width="2" marker-end="url(#arrow)"/>
+  <!-- MultiAgentSystem -->
+  <rect x="140" y="70" width="240" height="36" rx="8" fill="#e8e6ff" stroke="#6c63ff" stroke-width="2"/>
+  <text x="260" y="93" text-anchor="middle" fill="#1a1a2e" font-size="13" font-weight="600">MultiAgentSystem</text>
+  <line x1="260" y1="106" x2="260" y2="126" stroke="#6c63ff" stroke-width="2" marker-end="url(#arrow)"/>
+  <!-- Orchestrator -->
+  <rect x="150" y="130" width="220" height="36" rx="8" fill="#fff3cd" stroke="#ffc107" stroke-width="2"/>
+  <text x="260" y="153" text-anchor="middle" fill="#1a1a2e" font-size="13" font-weight="600">Orchestrator (coordination strategy)</text>
+  <!-- Three modes -->
+  <line x1="260" y1="166" x2="260" y2="185" stroke="#ffc107" stroke-width="2"/>
+  <line x1="80" y1="185" x2="440" y2="185" stroke="#ffc107" stroke-width="1.5"/>
+  <!-- Sequential -->
+  <line x1="80" y1="185" x2="80" y2="200" stroke="#ffc107" stroke-width="1.5" marker-end="url(#arrow-y)"/>
+  <rect x="15" y="205" width="130" height="56" rx="8" fill="#d4edda" stroke="#28a745" stroke-width="1.5"/>
+  <text x="80" y="224" text-anchor="middle" fill="#1a1a2e" font-size="11" font-weight="600">Sequential</text>
+  <text x="80" y="240" text-anchor="middle" fill="#555" font-size="10">A -> B -> C</text>
+  <text x="80" y="253" text-anchor="middle" fill="#888" font-size="9">chain agents</text>
+  <!-- Parallel -->
+  <line x1="260" y1="185" x2="260" y2="200" stroke="#ffc107" stroke-width="1.5" marker-end="url(#arrow-y)"/>
+  <rect x="195" y="205" width="130" height="56" rx="8" fill="#cce5ff" stroke="#007bff" stroke-width="1.5"/>
+  <text x="260" y="224" text-anchor="middle" fill="#1a1a2e" font-size="11" font-weight="600">Parallel</text>
+  <text x="260" y="240" text-anchor="middle" fill="#555" font-size="10">A, B, C (all at once)</text>
+  <text x="260" y="253" text-anchor="middle" fill="#888" font-size="9">independent</text>
+  <!-- Debate -->
+  <line x1="440" y1="185" x2="440" y2="200" stroke="#ffc107" stroke-width="1.5" marker-end="url(#arrow-y)"/>
+  <rect x="375" y="205" width="130" height="56" rx="8" fill="#f8d7da" stroke="#dc3545" stroke-width="1.5"/>
+  <text x="440" y="224" text-anchor="middle" fill="#1a1a2e" font-size="11" font-weight="600">Debate</text>
+  <text x="440" y="240" text-anchor="middle" fill="#555" font-size="10">A <-> B <-> C</text>
+  <text x="440" y="253" text-anchor="middle" fill="#888" font-size="9">iterative refinement</text>
+  <!-- SharedMemory -->
+  <rect x="170" y="280" width="180" height="32" rx="8" fill="#f0f0f5" stroke="#999" stroke-width="1.5"/>
+  <text x="260" y="301" text-anchor="middle" fill="#1a1a2e" font-size="12">SharedMemory (context)</text>
+  <!-- Final result -->
+  <line x1="260" y1="312" x2="260" y2="330" stroke="#6c63ff" stroke-width="2" marker-end="url(#arrow)"/>
+  <rect x="200" y="335" width="120" height="28" rx="8" fill="#d4edda" stroke="#28a745" stroke-width="2"/>
+  <text x="260" y="354" text-anchor="middle" fill="#1a1a2e" font-size="13" font-weight="600">Final result</text>
+</svg>
+</div>
+
+<h3>Core Components</h3>
+
+<pre><code>Agent
+    +-- name: str           (unique identifier)
+    +-- role: str           (e.g. "researcher", "critic")
+    +-- goal: str           (e.g. "find factual information")
+    +-- llm_fn: Callable    (fn(messages) -> str)
+
+SharedMemory
+    +-- store(key, value)   (save data)
+    +-- retrieve(key)       (load data)
+    +-- get_all()           (see everything)
+    +-- clear()             (reset)
+
+Orchestrator
+    +-- run_sequential(task)  (chain agents, pass context)
+    +-- run_parallel(task)    (independent agents, collect results)
+    +-- run_debate(task)      (iterative refinement over rounds)
+
+MultiAgentSystem
+    +-- mode: str           ("sequential", "parallel", "debate")
+    +-- run(task)           (execute with chosen mode)</code></pre>
+
+<div class="key-point">
+  <strong>Key Insight: Coordination Over Complexity</strong><br>
+  Each agent is simple -- it just calls an LLM with a prompt. The intelligence comes from how agents are coordinated: what context they see, when they run, and how their outputs are combined.
+</div>
+
+<hr>
+
+<h2 id="agent">Agent</h2>
+
+<p>An agent is a thin wrapper around an LLM function. It has an identity (name, role, goal) that gets injected into the system prompt, and a <code>step()</code> method that calls the LLM with the task and optional context.</p>
+
+<pre><code>agent = Agent(
+    name=<span class="string">"researcher"</span>,
+    role=<span class="string">"research analyst"</span>,
+    goal=<span class="string">"find accurate information"</span>,
+    llm_fn=my_llm_function,
+)
+result = agent.<span class="function">step</span>(<span class="string">"What is quantum computing?"</span>)</code></pre>
+
+<hr>
+
+<h2 id="memory">SharedMemory</h2>
+
+<p>A simple dict-based key-value store. Agents write their outputs here so other agents (or the orchestrator) can access them later. This enables loose coupling between agents.</p>
+
+<pre><code>memory = SharedMemory()
+memory.<span class="function">store</span>(<span class="string">"research"</span>, <span class="string">"Quantum computing uses qubits."</span>)
+memory.<span class="function">retrieve</span>(<span class="string">"research"</span>)  <span class="comment"># -> "Quantum computing uses qubits."</span></code></pre>
+
+<hr>
+
+<h2 id="orchestrator">Orchestrator</h2>
+
+<p>The orchestrator implements three coordination strategies:</p>
+
+<p><strong>Sequential</strong> -- agents run one after another. Each agent receives the original task plus all previous agents' outputs as context. This is useful for pipelines where later stages build on earlier ones (e.g., research -> analysis -> summary).</p>
+
+<p><strong>Parallel</strong> -- all agents run independently on the same task. No agent sees the others' outputs. Results are collected into a list. This is useful for getting diverse perspectives (e.g., multiple independent analyses).</p>
+
+<p><strong>Debate</strong> -- agents take turns refining a shared answer over multiple rounds. Each agent sees the current best answer and the full debate history. The last agent's response becomes the new best answer. This is useful for iterative refinement and error correction.</p>
+
+<pre><code>orch = Orchestrator(agents, memory)
+result = orch.<span class="function">run_sequential</span>(<span class="string">"task"</span>)  <span class="comment"># or run_parallel, run_debate</span></code></pre>
+
+<hr>
+
+<h2 id="system">MultiAgentSystem</h2>
+
+<p>The top-level class that ties everything together. It creates the shared memory and orchestrator internally, and dispatches to the correct coordination method based on the configured mode.</p>
+
+<pre><code>system = MultiAgentSystem([agent_a, agent_b], mode=<span class="string">"debate"</span>)
+result = system.<span class="function">run</span>(<span class="string">"Should we use microservices?"</span>)</code></pre>
+
+<hr>
+
+<h2 id="walkthrough">Forward Pass Walkthrough</h2>
+
+<h3>Sequential Mode</h3>
+
+<pre><code>Task: "Analyze the impact of AI on healthcare"
+
+Agent 1 (researcher):
+    Input:  task (no context)
+    Output: "AI improves diagnostics, enables personalized medicine..."
+
+Agent 2 (analyst):
+    Input:  task + "[researcher]: AI improves diagnostics..."
+    Output: "Key benefits: faster diagnosis, reduced costs..."
+
+Agent 3 (critic):
+    Input:  task + "[researcher]: ... \n[analyst]: ..."
+    Output: "Concerns: data privacy, bias in training data..."
+
+Final output: Agent 3's response</code></pre>
+
+<h3>Parallel Mode</h3>
+
+<pre><code>Task: "Evaluate this business proposal"
+
+Agent 1 (optimist):  "Strong market opportunity..."
+Agent 2 (pessimist): "High risk factors..."
+Agent 3 (analyst):    "Neutral assessment..."
+
+Output: ["Strong market...", "High risk...", "Neutral..."]</code></pre>
+
+<h3>Debate Mode</h3>
+
+<pre><code>Task: "Is remote work better than office work?"
+
+Round 1:
+    Agent A: "Remote work is better because..."
+    Agent B: "Office work is better because..."
+    Current answer: Agent B's response
+
+Round 2:
+    Agent A sees current answer + history, refines argument
+    Agent B sees updated answer + history, refines argument
+    Current answer: Agent B's updated response
+
+Round 3:
+    Same pattern, further refinement
+
+Final output: The refined answer after all rounds</code></pre>
+
+<hr>
+
+<h2 id="exercises">Exercises</h2>
+
+<p>Open <code>exercise.py</code> to practice implementing the multi-agent system yourself.</p>
+
+<h3>Exercise Order</h3>
+
+<ol>
+  <li><strong>Agent</strong>: Implement creation and the <code>step()</code> method</li>
+  <li><strong>SharedMemory</strong>: Implement store, retrieve, get_all, clear</li>
+  <li><strong>Orchestrator</strong>: Implement sequential, parallel, and debate modes</li>
+  <li><strong>MultiAgentSystem</strong>: Implement mode validation and dispatch</li>
+</ol>
+
+<h3>Tips</h3>
+
+<ul>
+  <li>For Agent, always build a system prompt with role and goal before the user message.</li>
+  <li>For SharedMemory, <code>retrieve()</code> should raise <code>KeyError</code> for missing keys, and <code>get_all()</code> should return a copy.</li>
+  <li>In sequential mode, accumulate context as a string with each agent's output labeled.</li>
+  <li>In debate mode, track both the current best answer and the full debate history.</li>
+  <li>The LLM function signature is <code>fn(messages: list[dict]) -> str</code>, where messages follow OpenAI format.</li>
+</ul>
+
+<hr>
+
+<h2 id="takeaways">Key Takeaways</h2>
+
+<ol>
+  <li><strong>Agents are wrappers, not monoliths.</strong> An agent is just an LLM function plus an identity. The real power comes from coordination.</li>
+  <li><strong>Coordination patterns matter.</strong> Sequential is for pipelines, parallel is for diversity, and debate is for refinement. Choosing the right pattern depends on the task.</li>
+  <li><strong>Shared memory enables loose coupling.</strong> Agents don't talk to each other directly -- they read and write to shared memory. This makes the system easy to extend.</li>
+  <li><strong>Context is everything.</strong> What an agent sees determines what it produces. Sequential mode gives rich context; parallel mode gives none; debate mode gives iterative context.</li>
+  <li><strong>Debate improves quality.</strong> By having agents challenge and refine each other's answers, debate mode can catch errors and produce more balanced results than any single agent.</li>
+</ol>
+
+<hr>
+
+<h2 id="further">Further Reading</h2>
+
+<ul>
+  <li><a href="https://github.com/microsoft/autogen">AutoGen: Multi-Agent Conversation Framework</a> -- Microsoft's multi-agent framework</li>
+  <li><a href="https://github.com/crewAIInc/crewAI">CrewAI: Framework for Orchestrating Role-Playing Agents</a> -- Role-based multi-agent coordination</li>
+  <li><a href="https://arxiv.org/abs/2305.14325">Multi-Agent Debate Improves LLM Reasoning (Liang et al., 2023)</a> -- Research on debate-based coordination</li>
+  <li><a href="https://arxiv.org/abs/2210.03629">ReAct: Reasoning and Acting (Yao et al., 2022)</a> -- Foundation for agent reasoning loops</li>
+</ul>
+
+</main>
+
+<script>
+const links = document.querySelectorAll('.sidebar a');
+const sections = [];
+links.forEach(link => {
+  const id = link.getAttribute('href')?.slice(1);
+  if (id) { const el = document.getElementById(id); if (el) sections.push({ id, el, link }); }
+});
+window.addEventListener('scroll', () => {
+  let current = sections[0];
+  for (const s of sections) { if (s.el.getBoundingClientRect().top < 120) current = s; }
+  links.forEach(l => l.classList.remove('active'));
+  if (current) current.link.classList.add('active');
+});
+</script>
+</body>
+</html>

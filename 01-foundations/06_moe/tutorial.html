@@ -1,0 +1,313 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Mixture of Experts (MoE) - LLM From Scratch</title>
+<style>
+:root { --bg: #1a1b26; --sidebar-bg: #13141b; --card-bg: #1e2030; --text: #c0caf5; --text-muted: #565f89; --accent: #7aa2f7; --accent2: #bb9af7; --green: #9ece6a; --orange: #ff9e64; --red: #f7768e; --cyan: #7dcfff; --border: #292e42; --code-bg: #15161e; --font: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans SC', sans-serif; --mono: 'SF Mono', 'Fira Code', 'Consolas', monospace; }
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { font-family: var(--font); background: var(--bg); color: var(--text); line-height: 1.8; display: flex; }
+.sidebar { width: 280px; min-height: 100vh; background: var(--sidebar-bg); padding: 2rem 1.5rem; position: fixed; top: 0; left: 0; overflow-y: auto; border-right: 1px solid var(--border); }
+.sidebar h2 { color: var(--accent); font-size: 1.1rem; margin-bottom: 1.5rem; padding-bottom: 0.5rem; border-bottom: 1px solid var(--border); }
+.sidebar a { display: block; color: var(--text-muted); text-decoration: none; padding: 0.4rem 0; font-size: 0.9rem; transition: color 0.2s; }
+.sidebar a:hover { color: var(--accent); }
+.sidebar .chapter-nav { margin-top: 2rem; padding-top: 1rem; border-top: 1px solid var(--border); }
+.sidebar .chapter-nav a { color: var(--green); font-size: 0.85rem; }
+.main { margin-left: 280px; padding: 3rem 4rem; max-width: 900px; width: 100%; }
+h1 { font-size: 2.2rem; color: var(--accent); margin-bottom: 0.5rem; }
+.subtitle { color: var(--text-muted); font-size: 1rem; margin-bottom: 2rem; }
+h2 { font-size: 1.5rem; color: var(--accent2); margin: 2.5rem 0 1rem; padding-bottom: 0.3rem; border-bottom: 1px solid var(--border); }
+h3 { font-size: 1.2rem; color: var(--green); margin: 2rem 0 0.8rem; }
+h4 { font-size: 1.05rem; color: var(--orange); margin: 1.5rem 0 0.5rem; }
+p { margin-bottom: 1rem; }
+blockquote { border-left: 3px solid var(--accent); padding: 0.8rem 1.2rem; margin: 1.2rem 0; background: var(--card-bg); border-radius: 0 8px 8px 0; font-style: italic; }
+pre { background: var(--code-bg); border: 1px solid var(--border); border-radius: 8px; padding: 1.2rem; overflow-x: auto; margin: 1rem 0 1.5rem; font-size: 0.9rem; }
+code { font-family: var(--mono); }
+p code, li code { background: var(--code-bg); padding: 0.15rem 0.4rem; border-radius: 4px; font-size: 0.85em; color: var(--cyan); }
+table { width: 100%; border-collapse: collapse; margin: 1rem 0 1.5rem; }
+th { background: var(--card-bg); color: var(--accent); text-align: left; padding: 0.6rem 1rem; border: 1px solid var(--border); }
+td { padding: 0.6rem 1rem; border: 1px solid var(--border); }
+ul, ol { margin: 0.5rem 0 1.2rem 1.5rem; }
+li { margin-bottom: 0.3rem; }
+hr { border: none; border-top: 1px solid var(--border); margin: 2rem 0; }
+strong { color: var(--accent); }
+.diagram-container { background: var(--card-bg); border-radius: 12px; padding: 2rem; margin: 1.5rem 0; text-align: center; border: 1px solid var(--border); }
+.diagram-container svg { max-width: 100%; }
+.key-point { background: linear-gradient(135deg, var(--card-bg), #1a2332); border-radius: 8px; padding: 1rem 1.2rem; margin: 1rem 0; border: 1px solid var(--accent); }
+.step-box { background: var(--card-bg); border-radius: 8px; padding: 1rem 1.2rem; margin: 0.8rem 0; border-left: 3px solid var(--green); }
+.step-box .step-num { color: var(--green); font-weight: bold; }
+a { color: var(--accent); text-decoration: none; }
+a:hover { text-decoration: underline; }
+@media (max-width: 900px) { .sidebar { display: none; } .main { margin-left: 0; padding: 2rem 1.5rem; } }
+</style>
+</head>
+<body>
+<nav class="sidebar">
+  <h2>Mixture of Experts</h2>
+  <a href="#what-is-moe">What is MoE?</a>
+  <a href="#architecture">Architecture</a>
+  <a href="#load-balancing">Load Balancing</a>
+  <a href="#moe-in-practice">MoE in Practice</a>
+  <a href="#code-walkthrough">Code Walkthrough</a>
+  <a href="#trade-offs">Trade-offs</a>
+  <a href="#how-to-run">How to Run</a>
+  <a href="#exercises">Exercises</a>
+  <a href="#takeaways">Key Takeaways</a>
+  <a href="#further-reading">Further Reading</a>
+  <div class="chapter-nav">
+    <a href="../05_model_architecture/tutorial.html">&larr; 05 Model Architecture</a><br>
+    <a href="../07_kv_cache/tutorial.html">07 KV Cache &rarr;</a>
+  </div>
+</nav>
+
+<div class="main">
+<h1>Mixture of Experts (MoE)</h1>
+<p class="subtitle">Module 01 &mdash; Foundations, Chapter 06</p>
+
+<p>Standard transformers scale by making every layer wider and deeper, but this means every token passes through every parameter. Mixture of Experts (MoE) breaks that assumption: instead of one large feed-forward network, we have many smaller "expert" networks, and a learned router sends each token to only a few of them. The result is a model with many more total parameters but the same per-token compute as a smaller dense model.</p>
+
+<p>This is how Mixtral 8x7B achieves quality comparable to much larger dense models while keeping inference fast.</p>
+
+<hr>
+
+<h2 id="what-is-moe">What is MoE and Why It Matters</h2>
+
+<h3>The Scaling Problem</h3>
+
+<p>To make a transformer more capable, you typically increase its parameter count. But more parameters means more compute per token: every token flows through every weight matrix in every layer.</p>
+
+<p>MoE breaks this tradeoff:</p>
+<ul>
+  <li><strong>Increase total parameters</strong> (more knowledge capacity)</li>
+  <li><strong>Keep per-token compute constant</strong> (each token only uses a few experts)</li>
+  <li><strong>Scale model capacity without proportional cost</strong></li>
+</ul>
+
+<h3>The Core Idea</h3>
+
+<div class="diagram-container">
+<svg width="650" height="180" viewBox="0 0 650 180">
+  <defs><marker id="arr6" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M 0 0 L 10 5 L 0 10 z" fill="#7aa2f7"/></marker></defs>
+  <text x="325" y="20" text-anchor="middle" fill="#c0caf5" font-size="13" font-weight="bold">Dense FFN vs MoE</text>
+  <!-- Dense -->
+  <rect x="40" y="50" width="80" height="40" rx="6" fill="#1e2030" stroke="#565f89"/>
+  <text x="80" y="75" text-anchor="middle" fill="#565f89" font-size="12">Token x</text>
+  <line x1="130" y1="70" x2="170" y2="70" stroke="#565f89" marker-end="url(#arr6)"/>
+  <rect x="180" y="50" width="80" height="40" rx="6" fill="#1e2030" stroke="#7aa2f7"/>
+  <text x="220" y="75" text-anchor="middle" fill="#7aa2f7" font-size="11">FFN</text>
+  <line x1="270" y1="70" x2="310" y2="70" stroke="#565f89" marker-end="url(#arr6)"/>
+  <rect x="320" y="50" width="80" height="40" rx="6" fill="#1e2030" stroke="#565f89"/>
+  <text x="360" y="75" text-anchor="middle" fill="#565f89" font-size="12">Output</text>
+  <text x="220" y="110" text-anchor="middle" fill="#f7768e" font-size="10">All params active</text>
+  <!-- MoE -->
+  <rect x="40" y="130" width="80" height="40" rx="6" fill="#1e2030" stroke="#565f89"/>
+  <text x="80" y="155" text-anchor="middle" fill="#565f89" font-size="12">Token x</text>
+  <line x1="130" y1="150" x2="160" y2="150" stroke="#565f89" marker-end="url(#arr6)"/>
+  <rect x="170" y="130" width="60" height="40" rx="6" fill="#1e2030" stroke="#bb9af7"/>
+  <text x="200" y="155" text-anchor="middle" fill="#bb9af7" font-size="10">Router</text>
+  <line x1="240" y1="140" x2="280" y2="120" stroke="#9ece6a" marker-end="url(#arr6)" stroke-width="2"/>
+  <line x1="240" y1="150" x2="280" y2="150" stroke="#565f89" marker-end="url(#arr6)"/>
+  <line x1="240" y1="160" x2="280" y2="180" stroke="#565f89" marker-end="url(#arr6)"/>
+  <rect x="290" y="105" width="60" height="30" rx="6" fill="#1e2030" stroke="#9ece6a" stroke-width="2"/>
+  <text x="320" y="125" text-anchor="middle" fill="#9ece6a" font-size="10">Expert 1</text>
+  <rect x="290" y="140" width="60" height="30" rx="6" fill="#1e2030" stroke="#565f89"/>
+  <text x="320" y="160" text-anchor="middle" fill="#565f89" font-size="10">Expert 2</text>
+  <rect x="290" y="175" width="60" height="30" rx="6" fill="#1e2030" stroke="#565f89"/>
+  <text x="320" y="195" text-anchor="middle" fill="#565f89" font-size="10">Expert 3</text>
+  <line x1="360" y1="120" x2="400" y2="150" stroke="#9ece6a" marker-end="url(#arr6)" stroke-width="2"/>
+  <rect x="410" y="130" width="80" height="40" rx="6" fill="#1e2030" stroke="#565f89"/>
+  <text x="450" y="155" text-anchor="middle" fill="#565f89" font-size="12">Output</text>
+  <text x="400" y="195" text-anchor="middle" fill="#9ece6a" font-size="10">Only top-K experts active</text>
+</svg>
+</div>
+
+<p>With 8 experts and top-2 routing, each token activates only 2 out of 8 experts. The per-token FLOPs are roughly the same as a single FFN, but the model has 8x the parameters in its FFN layers.</p>
+
+<hr>
+
+<h2 id="architecture">Architecture</h2>
+
+<h3>TopKRouter</h3>
+
+<pre><code>class TopKRouter(nn.Module):
+    def __init__(self, d_model, n_experts, top_k=2):
+        self.gate = nn.Linear(d_model, n_experts, bias=False)
+
+    def forward(self, x):
+        logits = self.gate(x_flat)              # (B*T, n_experts)
+        weights, indices = torch.topk(logits, self.top_k)  # top-K
+        weights = F.softmax(weights, dim=-1)    # normalize
+        return indices, weights</code></pre>
+
+<p><strong>How it works:</strong></p>
+<ol>
+  <li>Project each token vector to a score for each expert</li>
+  <li>Select the top-K experts by score</li>
+  <li>Softmax the selected scores to get routing weights (sum to 1)</li>
+</ol>
+
+<h3>Expert</h3>
+
+<p>Each expert is an independent SwiGLU feed-forward network:</p>
+
+<pre><code>class Expert(nn.Module):
+    def __init__(self, d_model, d_ff):
+        self.w1 = nn.Linear(d_model, d_ff, bias=False)
+        self.w_gate = nn.Linear(d_model, d_ff, bias=False)
+        self.w2 = nn.Linear(d_ff, d_model, bias=False)
+
+    def forward(self, x):
+        return self.w2(F.silu(self.w_gate(x)) * self.w1(x))</code></pre>
+
+<h3>MoELayer</h3>
+
+<pre><code>class MoELayer(nn.Module):
+    def forward(self, x):
+        indices, weights = self.router(x)
+
+        for k in range(self.top_k):
+            for e_idx in range(n_experts):
+                mask = (indices[:, k] == e_idx)
+                if mask.any():
+                    expert_out = self.experts[e_idx](x_flat[mask])
+                    output[mask] += weights[mask, k] * expert_out
+
+        return output</code></pre>
+
+<p>The loop over experts looks inefficient (and it is for production), but it clearly shows the algorithm: for each routing slot, find which tokens go to each expert, run those tokens through the expert, and accumulate the weighted output.</p>
+
+<hr>
+
+<h2 id="load-balancing">Load Balancing</h2>
+
+<h3>The Problem: Expert Collapse</h3>
+
+<p>Without any regularization, the router can collapse to always picking the same 1-2 experts. This is a form of "rich get richer": once an expert starts getting more tokens, it gets more training signal, gets better, and attracts even more tokens.</p>
+
+<h3>Solutions</h3>
+
+<ol>
+  <li><strong>Auxiliary Load Balancing Loss</strong>: Add a penalty term that encourages uniform routing. <code>aux_loss = n_experts * sum(f_i * p_i)</code></li>
+  <li><strong>Capacity Factor</strong>: Limit the maximum number of tokens each expert can process.</li>
+  <li><strong>Random Routing with Noise</strong>: Add noise to the router logits before top-K selection.</li>
+  <li><strong>Expert Choice Routing</strong>: Instead of each token choosing experts, each expert chooses its top tokens.</li>
+</ol>
+
+<hr>
+
+<h2 id="moe-in-practice">MoE in Practice</h2>
+
+<table>
+  <tr><th>Model</th><th>Experts</th><th>Routing</th><th>Total Params</th><th>Active Params</th></tr>
+  <tr><td>Mixtral 8x7B</td><td>8</td><td>Top-2</td><td>47B</td><td>~13B</td></tr>
+  <tr><td>Switch Transformer</td><td>Up to 128</td><td>Top-1</td><td>Up to 1.6T</td><td>~small</td></tr>
+  <tr><td>DeepSeek-MoE</td><td>Many small</td><td>Top-K + shared</td><td>Large</td><td>Moderate</td></tr>
+  <tr><td>GShard</td><td>Many</td><td>Top-2</td><td>600B</td><td>Moderate</td></tr>
+</table>
+
+<hr>
+
+<h2 id="code-walkthrough">Code Walkthrough</h2>
+
+<h3>TopKRouter</h3>
+
+<pre><code>class TopKRouter(nn.Module):
+    def __init__(self, d_model, n_experts, top_k=2):
+        self.gate = nn.Linear(d_model, n_experts, bias=False)
+
+    def forward(self, x):
+        B, T, D = x.shape
+        x_flat = x.view(-1, D)           # (B*T, D)
+        logits = self.gate(x_flat)        # (B*T, n_experts)
+        weights, indices = torch.topk(logits, self.top_k, dim=-1)
+        weights = F.softmax(weights, dim=-1)
+        return indices, weights</code></pre>
+
+<p>Key details:</p>
+<ul>
+  <li>The gate is a single linear layer with no bias</li>
+  <li><code>torch.topk</code> returns both the values and the indices of the top-K entries</li>
+  <li>Softmax is applied only over the top-K values, not all experts</li>
+</ul>
+
+<h3>MoELayer</h3>
+
+<pre><code>class MoELayer(nn.Module):
+    def forward(self, x):
+        B, T, D = x.shape
+        indices, weights = self.router(x)
+        x_flat = x.view(-1, D)
+        output = torch.zeros_like(x_flat)
+
+        for k in range(self.top_k):
+            for e_idx in range(len(self.experts)):
+                mask = (indices[:, k] == e_idx)
+                if mask.any():
+                    expert_input = x_flat[mask]
+                    expert_output = self.experts[e_idx](expert_input)
+                    output[mask] += weights[:, k].unsqueeze(-1)[mask] * expert_output
+
+        return output.view(B, T, D)</code></pre>
+
+<hr>
+
+<h2 id="trade-offs">Trade-offs</h2>
+
+<div class="key-point">
+<ul>
+  <li><strong>More Experts = More Capacity</strong>: Each expert can specialize in different types of input.</li>
+  <li><strong>Sparse Activation = Constant Compute</strong>: Even with 8 experts, each token only uses 2.</li>
+  <li><strong>Memory is the Bottleneck</strong>: All expert parameters must be stored in GPU memory, even if most are idle.</li>
+  <li><strong>Load Balancing is Critical</strong>: Without proper regularization, expert collapse wastes capacity.</li>
+</ul>
+</div>
+
+<hr>
+
+<h2 id="how-to-run">How to Run</h2>
+
+<pre><code>pytest 01-foundations/06_moe/tests.py -v</code></pre>
+
+<hr>
+
+<h2 id="exercises">Exercises</h2>
+
+<ol>
+  <li><code>ExpertExercise.__init__</code> &mdash; Create w1, w_gate, w2 linear layers</li>
+  <li><code>ExpertExercise.forward</code> &mdash; Implement the SwiGLU forward pass</li>
+  <li><code>TopKRouterExercise.__init__</code> &mdash; Create the gate linear layer</li>
+  <li><code>TopKRouterExercise.forward</code> &mdash; Implement routing with top-K selection</li>
+  <li><code>MoELayerExercise.__init__</code> &mdash; Create the router and expert list</li>
+  <li><code>MoELayerExercise.forward</code> &mdash; Implement the full MoE forward pass</li>
+</ol>
+
+<hr>
+
+<h2 id="takeaways">Key Takeaways</h2>
+
+<div class="key-point">
+<ol>
+  <li><strong>MoE scales model capacity without scaling per-token compute.</strong> By routing each token to only a few experts, we get the knowledge capacity of a large model with the compute cost of a small one.</li>
+  <li><strong>The router is a learned gating network.</strong> It projects each token to expert scores and selects the top-K.</li>
+  <li><strong>Experts are independent FFN networks.</strong> Each expert is a SwiGLU feed-forward network that can specialize.</li>
+  <li><strong>Load balancing prevents expert collapse.</strong> Without regularization, the router can route all tokens to the same experts.</li>
+  <li><strong>MoE is widely used in practice.</strong> Mixtral, Switch Transformer, DeepSeek, and GShard all use MoE.</li>
+</ol>
+</div>
+
+<hr>
+
+<h2 id="further-reading">Further Reading</h2>
+
+<ul>
+  <li><a href="https://arxiv.org/abs/2101.03961">Switch Transformer (Fedus et al., 2022)</a></li>
+  <li><a href="https://arxiv.org/abs/2401.04088">Mixtral of Experts (Jiang et al., 2024)</a></li>
+  <li><a href="https://arxiv.org/abs/2006.16668">GShard (Lepikhin et al., 2021)</a></li>
+  <li><a href="https://arxiv.org/abs/2401.06066">DeepSeek-MoE (Dai et al., 2024)</a></li>
+  <li><a href="https://arxiv.org/abs/2202.08906">ST-MoE (Zoph et al., 2022)</a></li>
+</ul>
+
+</div>
+</body>
+</html>

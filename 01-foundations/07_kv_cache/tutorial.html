@@ -1,0 +1,329 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>KV Cache - LLM From Scratch</title>
+<style>
+:root { --bg: #1a1b26; --sidebar-bg: #13141b; --card-bg: #1e2030; --text: #c0caf5; --text-muted: #565f89; --accent: #7aa2f7; --accent2: #bb9af7; --green: #9ece6a; --orange: #ff9e64; --red: #f7768e; --cyan: #7dcfff; --border: #292e42; --code-bg: #15161e; --font: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans SC', sans-serif; --mono: 'SF Mono', 'Fira Code', 'Consolas', monospace; }
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { font-family: var(--font); background: var(--bg); color: var(--text); line-height: 1.8; display: flex; }
+.sidebar { width: 280px; min-height: 100vh; background: var(--sidebar-bg); padding: 2rem 1.5rem; position: fixed; top: 0; left: 0; overflow-y: auto; border-right: 1px solid var(--border); }
+.sidebar h2 { color: var(--accent); font-size: 1.1rem; margin-bottom: 1.5rem; padding-bottom: 0.5rem; border-bottom: 1px solid var(--border); }
+.sidebar a { display: block; color: var(--text-muted); text-decoration: none; padding: 0.4rem 0; font-size: 0.9rem; transition: color 0.2s; }
+.sidebar a:hover { color: var(--accent); }
+.sidebar .chapter-nav { margin-top: 2rem; padding-top: 1rem; border-top: 1px solid var(--border); }
+.sidebar .chapter-nav a { color: var(--green); font-size: 0.85rem; }
+.main { margin-left: 280px; padding: 3rem 4rem; max-width: 900px; width: 100%; }
+h1 { font-size: 2.2rem; color: var(--accent); margin-bottom: 0.5rem; }
+.subtitle { color: var(--text-muted); font-size: 1rem; margin-bottom: 2rem; }
+h2 { font-size: 1.5rem; color: var(--accent2); margin: 2.5rem 0 1rem; padding-bottom: 0.3rem; border-bottom: 1px solid var(--border); }
+h3 { font-size: 1.2rem; color: var(--green); margin: 2rem 0 0.8rem; }
+p { margin-bottom: 1rem; }
+blockquote { border-left: 3px solid var(--accent); padding: 0.8rem 1.2rem; margin: 1.2rem 0; background: var(--card-bg); border-radius: 0 8px 8px 0; font-style: italic; }
+pre { background: var(--code-bg); border: 1px solid var(--border); border-radius: 8px; padding: 1.2rem; overflow-x: auto; margin: 1rem 0 1.5rem; font-size: 0.9rem; }
+code { font-family: var(--mono); }
+p code, li code { background: var(--code-bg); padding: 0.15rem 0.4rem; border-radius: 4px; font-size: 0.85em; color: var(--cyan); }
+table { width: 100%; border-collapse: collapse; margin: 1rem 0 1.5rem; }
+th { background: var(--card-bg); color: var(--accent); text-align: left; padding: 0.6rem 1rem; border: 1px solid var(--border); }
+td { padding: 0.6rem 1rem; border: 1px solid var(--border); }
+ul, ol { margin: 0.5rem 0 1.2rem 1.5rem; }
+li { margin-bottom: 0.3rem; }
+hr { border: none; border-top: 1px solid var(--border); margin: 2rem 0; }
+strong { color: var(--accent); }
+.diagram-container { background: var(--card-bg); border-radius: 12px; padding: 2rem; margin: 1.5rem 0; text-align: center; border: 1px solid var(--border); }
+.diagram-container svg { max-width: 100%; }
+.key-point { background: linear-gradient(135deg, var(--card-bg), #1a2332); border-radius: 8px; padding: 1rem 1.2rem; margin: 1rem 0; border: 1px solid var(--accent); }
+.step-box { background: var(--card-bg); border-radius: 8px; padding: 1rem 1.2rem; margin: 0.8rem 0; border-left: 3px solid var(--green); }
+.step-box .step-num { color: var(--green); font-weight: bold; }
+a { color: var(--accent); text-decoration: none; }
+a:hover { text-decoration: underline; }
+@media (max-width: 900px) { .sidebar { display: none; } .main { margin-left: 0; padding: 2rem 1.5rem; } }
+</style>
+</head>
+<body>
+<nav class="sidebar">
+  <h2>KV Cache</h2>
+  <a href="#the-problem">The Problem</a>
+  <a href="#the-solution">The Solution</a>
+  <a href="#complexity">Complexity Comparison</a>
+  <a href="#implementation">Implementation Details</a>
+  <a href="#cached-attention">CachedAttention</a>
+  <a href="#memory-analysis">Memory Analysis</a>
+  <a href="#performance">Performance Comparison</a>
+  <a href="#code-walkthrough">Code Walkthrough</a>
+  <a href="#takeaways">Key Takeaways</a>
+  <a href="#next-steps">Next Steps</a>
+  <a href="#references">References</a>
+  <div class="chapter-nav">
+    <a href="../06_moe/tutorial.html">&larr; 06 MoE</a><br>
+    <a href="../08_long_context/tutorial.html">08 Long Context &rarr;</a>
+  </div>
+</nav>
+
+<div class="main">
+<h1>KV Cache for Efficient Autoregressive Generation</h1>
+
+<h2 id="the-problem">The Problem: Naive Generation is Wasteful</h2>
+
+<p>When generating text with a transformer model, we typically do it <strong>autoregressively</strong> &mdash; one token at a time. The naive approach looks like this:</p>
+
+<pre><code>Step 1: Generate token 1 from input [prompt]
+Step 2: Generate token 2 from input [prompt, token1]
+Step 3: Generate token 3 from input [prompt, token1, token2]
+...</code></pre>
+
+<p>At each step, we run the <strong>full attention computation</strong> over the entire sequence so far. This means:</p>
+
+<div class="diagram-container">
+<svg width="600" height="200" viewBox="0 0 600 200">
+  <text x="300" y="20" text-anchor="middle" fill="#c0caf5" font-size="13" font-weight="bold">Naive Generation: O(n^2) Total Cost</text>
+  <rect x="50" y="50" width="50" height="30" rx="4" fill="#7aa2f7" opacity="0.3" stroke="#7aa2f7"/>
+  <text x="75" y="70" text-anchor="middle" fill="#7aa2f7" font-size="10">Step 1</text>
+  <rect x="120" y="50" width="50" height="30" rx="4" fill="#7aa2f7" opacity="0.4" stroke="#7aa2f7"/>
+  <text x="145" y="70" text-anchor="middle" fill="#7aa2f7" font-size="10">Step 2</text>
+  <rect x="190" y="50" width="50" height="30" rx="4" fill="#7aa2f7" opacity="0.5" stroke="#7aa2f7"/>
+  <text x="215" y="70" text-anchor="middle" fill="#7aa2f7" font-size="10">Step 3</text>
+  <rect x="260" y="50" width="50" height="30" rx="4" fill="#7aa2f7" opacity="0.6" stroke="#7aa2f7"/>
+  <rect x="330" y="50" width="50" height="30" rx="4" fill="#7aa2f7" opacity="0.7" stroke="#7aa2f7"/>
+  <rect x="400" y="50" width="50" height="30" rx="4" fill="#7aa2f7" opacity="0.8" stroke="#7aa2f7"/>
+  <rect x="470" y="50" width="80" height="30" rx="4" fill="#7aa2f7" opacity="0.9" stroke="#7aa2f7"/>
+  <text x="510" y="70" text-anchor="middle" fill="#7aa2f7" font-size="10">Step n</text>
+  <text x="300" y="110" text-anchor="middle" fill="#f7768e" font-size="12">At each step, recompute ALL K, V from scratch!</text>
+  <text x="300" y="130" text-anchor="middle" fill="#565f89" font-size="11">Step 1: O(1) | Step 2: O(2) | Step 3: O(3) | ... | Step n: O(n)</text>
+  <text x="300" y="160" text-anchor="middle" fill="#ff9e64" font-size="13" font-weight="bold">Total: O(n^2) &mdash; Most of this work is REDUNDANT!</text>
+  <text x="300" y="190" text-anchor="middle" fill="#565f89" font-size="11">At step 3, we already computed K, V for positions 1 and 2 at step 2.</text>
+</svg>
+</div>
+
+<hr>
+
+<h2 id="the-solution">The Solution: KV Cache</h2>
+
+<p>The <strong>KV Cache</strong> stores the Key and Value tensors from previous steps, so we only need to compute the <strong>new</strong> K and V for the current token.</p>
+
+<h3>How It Works</h3>
+
+<ol>
+  <li><strong>Pre-allocate</strong> a cache buffer large enough for the maximum sequence length</li>
+  <li>At each generation step:
+    <ul>
+      <li>Compute Q, K, V for the <strong>current token only</strong> (seq_len = 1)</li>
+      <li><strong>Update</strong> the cache with the new K, V at the current position</li>
+      <li><strong>Retrieve</strong> the full K, V history from the cache</li>
+      <li>Compute attention: new Q against all cached K, V</li>
+    </ul>
+  </li>
+</ol>
+
+<div class="diagram-container">
+<svg width="700" height="220" viewBox="0 0 700 220">
+  <text x="350" y="20" text-anchor="middle" fill="#c0caf5" font-size="13" font-weight="bold">KV Cache: O(n) Total Cost</text>
+  <rect x="30" y="50" width="100" height="40" rx="6" fill="#1e2030" stroke="#7aa2f7"/>
+  <text x="80" y="70" text-anchor="middle" fill="#7aa2f7" font-size="11">Step 1</text>
+  <text x="80" y="85" text-anchor="middle" fill="#565f89" font-size="9">Q,K,V for token</text>
+  <line x1="140" y1="70" x2="170" y2="70" stroke="#565f89" marker-end="url(#arr6)"/>
+  <rect x="180" y="50" width="100" height="40" rx="6" fill="#1e2030" stroke="#9ece6a"/>
+  <text x="230" y="70" text-anchor="middle" fill="#9ece6a" font-size="11">Cache K,V</text>
+  <text x="230" y="85" text-anchor="middle" fill="#565f89" font-size="9">pos 0</text>
+  <line x1="290" y1="70" x2="320" y2="70" stroke="#565f89" marker-end="url(#arr6)"/>
+  <rect x="330" y="50" width="100" height="40" rx="6" fill="#1e2030" stroke="#bb9af7"/>
+  <text x="380" y="70" text-anchor="middle" fill="#bb9af7" font-size="11">Attend Q</text>
+  <text x="380" y="85" text-anchor="middle" fill="#565f89" font-size="9">against all K,V</text>
+  <!-- Step 2 -->
+  <rect x="30" y="110" width="100" height="40" rx="6" fill="#1e2030" stroke="#7aa2f7"/>
+  <text x="80" y="130" text-anchor="middle" fill="#7aa2f7" font-size="11">Step 2</text>
+  <text x="80" y="145" text-anchor="middle" fill="#565f89" font-size="9">Only new token</text>
+  <line x1="140" y1="130" x2="170" y2="130" stroke="#565f89" marker-end="url(#arr6)"/>
+  <rect x="180" y="110" width="100" height="40" rx="6" fill="#1e2030" stroke="#9ece6a"/>
+  <text x="230" y="130" text-anchor="middle" fill="#9ece6a" font-size="11">Update Cache</text>
+  <text x="230" y="145" text-anchor="middle" fill="#565f89" font-size="9">pos 0-1</text>
+  <line x1="290" y1="130" x2="320" y2="130" stroke="#565f89" marker-end="url(#arr6)"/>
+  <rect x="330" y="110" width="100" height="40" rx="6" fill="#1e2030" stroke="#bb9af7"/>
+  <text x="380" y="130" text-anchor="middle" fill="#bb9af7" font-size="11">Attend Q</text>
+  <text x="380" y="145" text-anchor="middle" fill="#565f89" font-size="9">against all K,V</text>
+  <!-- Key point -->
+  <rect x="470" y="55" width="200" height="100" rx="8" fill="#1e2030" stroke="#ff9e64"/>
+  <text x="570" y="80" text-anchor="middle" fill="#ff9e64" font-size="11">Each step:</text>
+  <text x="570" y="100" text-anchor="middle" fill="#c0caf5" font-size="10">Compute Q,K,V for 1 token</text>
+  <text x="570" y="118" text-anchor="middle" fill="#c0caf5" font-size="10">Update cache</text>
+  <text x="570" y="136" text-anchor="middle" fill="#9ece6a" font-size="11">O(1) per step!</text>
+  <text x="350" y="195" text-anchor="middle" fill="#9ece6a" font-size="13" font-weight="bold">Trade memory for speed: O(n) cache vs O(n^2) recomputation</text>
+</svg>
+</div>
+
+<hr>
+
+<h2 id="complexity">Complexity Comparison</h2>
+
+<table>
+  <tr><th>Approach</th><th>Per-Step Cost</th><th>Total Cost (n tokens)</th><th>Memory</th></tr>
+  <tr><td>Naive</td><td>O(i)</td><td>O(n^2)</td><td>O(1)</td></tr>
+  <tr><td>KV Cache</td><td>O(1)</td><td>O(n)</td><td>O(n)</td></tr>
+</table>
+
+<hr>
+
+<h2 id="implementation">Implementation Details</h2>
+
+<h3>KVCache Class</h3>
+
+<pre><code>class KVCache:
+    def __init__(self, max_batch_size, max_seq_len, n_heads, d_k):
+        # Pre-allocate buffers
+        self.k_cache = torch.zeros(max_batch_size, n_heads, max_seq_len, d_k)
+        self.v_cache = torch.zeros(max_batch_size, n_heads, max_seq_len, d_k)</code></pre>
+
+<p>Key design decisions:</p>
+<ul>
+  <li><strong>Pre-allocation</strong>: We allocate the full buffer upfront to avoid repeated memory allocation</li>
+  <li><strong>In-place updates</strong>: We write directly into the pre-allocated buffer</li>
+  <li><strong>Batch-aware</strong>: The cache handles multiple sequences efficiently</li>
+</ul>
+
+<h3>Update and Get Methods</h3>
+
+<pre><code>def update(self, batch_size, start_pos, k, v):
+    """Update cache at the given position."""
+    seq_len = k.shape[2]
+    self.k_cache[:batch_size, :, start_pos:start_pos + seq_len] = k
+    self.v_cache[:batch_size, :, start_pos:start_pos + seq_len] = v
+
+def get(self, batch_size, end_pos):
+    """Get cached K, V up to end_pos."""
+    return (
+        self.k_cache[:batch_size, :, :end_pos],
+        self.v_cache[:batch_size, :, :end_pos],
+    )</code></pre>
+
+<hr>
+
+<h2 id="cached-attention">CachedAttention</h2>
+
+<p>The attention module needs to handle two modes:</p>
+<ol>
+  <li><strong>Prefill mode</strong>: Processing the initial prompt (seq_len > 1), no cache needed</li>
+  <li><strong>Generation mode</strong>: Generating one token at a time (seq_len = 1), uses cache</li>
+</ol>
+
+<pre><code>def forward(self, x, kv_cache=None, start_pos=0):
+    B, T, _ = x.shape
+
+    # Always compute Q, K, V for current input
+    q = self.W_q(x).view(B, T, n_heads, d_k).transpose(1, 2)
+    k = self.W_k(x).view(B, T, n_heads, d_k).transpose(1, 2)
+    v = self.W_v(x).view(B, T, n_heads, d_k).transpose(1, 2)
+
+    if kv_cache is not None:
+        # Store new K, V and retrieve full history
+        kv_cache.update(B, start_pos, k, v)
+        k, v = kv_cache.get(B, start_pos + T)
+
+    # Standard attention computation
+    scores = q @ k.transpose(-2, -1) / sqrt(d_k)
+
+    # Causal mask: only for prefill (T > 1)
+    if T > 1:
+        causal_mask = torch.triu(
+            torch.ones(T, k.shape[2], device=x.device),
+            diagonal=k.shape[2] - T + 1
+        ).bool()
+        scores = scores.masked_fill(causal_mask, float("-inf"))
+
+    attn_weights = F.softmax(scores, dim=-1)
+    output = attn_weights @ v
+    return self.W_o(output.transpose(1, 2).contiguous().view(B, T, self.d_model))</code></pre>
+
+<hr>
+
+<h2 id="memory-analysis">Memory Analysis</h2>
+
+<h3>Cache Size Formula</h3>
+
+<pre><code>Cache per layer = 2 x batch_size x n_heads x seq_len x d_k
+Total cache     = num_layers x cache_per_layer</code></pre>
+
+<h3>Example: GPT-2 Small</h3>
+
+<pre><code>12 layers, 12 heads, d_k = 64, seq_len = 1024, batch = 1
+Cache per layer: 2 x 1 x 12 x 1024 x 64 = 1.5 MB
+Total cache: 12 x 1.5 MB = 18 MB</code></pre>
+
+<p>For longer sequences or larger models, this can become significant!</p>
+
+<hr>
+
+<h2 id="performance">Performance Comparison</h2>
+
+<pre><code># Without cache: ~O(n^2) time
+start = time.time()
+for i in range(1000):
+    output = model(full_sequence[:i+1])
+naive_time = time.time() - start
+
+# With cache: ~O(n) time
+start = time.time()
+cache = KVCache()
+for i in range(1000):
+    output = model(current_token, cache, start_pos=i)
+cached_time = time.time() - start
+
+print(f"Speedup: {naive_time / cached_time:.1f}x")
+# Typical speedup: 10-100x for long sequences</code></pre>
+
+<hr>
+
+<h2 id="code-walkthrough">Code Walkthrough</h2>
+
+<h3>Step 1: Initialize Cache</h3>
+<pre><code>cache = KVCache(max_batch_size=1, max_seq_len=2048, n_heads=12, d_k=64)</code></pre>
+
+<h3>Step 2: Prefill (Process Prompt)</h3>
+<pre><code>prompt = tokenize("Once upon a time")
+output = model(prompt, cache, start_pos=0)
+# Cache now contains K, V for positions 0..3</code></pre>
+
+<h3>Step 3: Generate Tokens</h3>
+<pre><code>for i in range(100):
+    next_token = sample(output)
+    output = model(next_token, cache, start_pos=len(prompt) + i)
+    # Cache grows by 1 position each step</code></pre>
+
+<hr>
+
+<h2 id="takeaways">Key Takeaways</h2>
+
+<div class="key-point">
+<ol>
+  <li><strong>KV Cache eliminates redundant computation</strong> by storing previous K, V</li>
+  <li><strong>Trade memory for speed</strong> &mdash; O(n) cache vs O(n^2) recomputation</li>
+  <li><strong>Pre-allocate buffers</strong> to avoid allocation overhead during generation</li>
+  <li><strong>Handle prefill and generation modes</strong> differently in attention</li>
+  <li><strong>Essential for production inference</strong> &mdash; all modern LLM serving systems use KV cache</li>
+</ol>
+</div>
+
+<hr>
+
+<h2 id="next-steps">Next Steps</h2>
+
+<ul>
+  <li><strong>PagedAttention</strong>: More memory-efficient cache management (used in vLLM)</li>
+  <li><strong>Multi-Query Attention (MQA)</strong>: Share K, V across heads to reduce cache size</li>
+  <li><strong>Grouped-Query Attention (GQA)</strong>: Compromise between MHA and MQA</li>
+  <li><strong>Quantized KV Cache</strong>: Store cache in lower precision (int8, int4)</li>
+</ul>
+
+<hr>
+
+<h2 id="references">References</h2>
+
+<ul>
+  <li><a href="https://arxiv.org/abs/1706.03762">Attention Is All You Need</a> &mdash; Original Transformer paper</li>
+  <li><a href="https://arxiv.org/abs/2211.05102">Efficiently Scaling Transformer Inference</a> &mdash; Analysis of KV cache trade-offs</li>
+  <li><a href="https://github.com/vllm-project/vllm">vLLM</a> &mdash; PagedAttention implementation</li>
+</ul>
+
+</div>
+</body>
+</html>

@@ -1,0 +1,503 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Online DPO - LLM From Scratch</title>
+<style>
+:root {
+  --bg: #0f1117;
+  --bg-card: #161b22;
+  --bg-sidebar: #0d1117;
+  --bg-code: #1a1e28;
+  --text: #e6edf3;
+  --text-muted: #8b949e;
+  --text-dim: #6e7681;
+  --accent: #58a6ff;
+  --accent-green: #3fb950;
+  --accent-orange: #d29922;
+  --accent-red: #f85149;
+  --accent-purple: #bc8cff;
+  --border: #21262d;
+  --border-light: #30363d;
+  --sidebar-w: 280px;
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  line-height: 1.7;
+  font-size: 15px;
+}
+
+.layout {
+  display: flex;
+  min-height: 100vh;
+}
+
+/* Sidebar */
+.sidebar {
+  width: var(--sidebar-w);
+  background: var(--bg-sidebar);
+  border-right: 1px solid var(--border);
+  position: fixed;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  overflow-y: auto;
+  z-index: 100;
+  padding: 20px 0;
+}
+
+.sidebar-header {
+  padding: 10px 20px 20px;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 10px;
+}
+
+.sidebar-header .module-tag {
+  display: inline-block;
+  background: var(--accent);
+  color: #000;
+  font-size: 10px;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 10px;
+  margin-bottom: 8px;
+  letter-spacing: 0.5px;
+}
+
+.sidebar-header h2 {
+  font-size: 16px;
+  color: var(--text);
+  font-weight: 600;
+  line-height: 1.3;
+}
+
+.sidebar-header .chapter-num {
+  color: var(--accent);
+  font-size: 12px;
+  font-weight: 500;
+  margin-bottom: 4px;
+}
+
+.toc-item {
+  display: block;
+  padding: 6px 20px;
+  color: var(--text-muted);
+  text-decoration: none;
+  font-size: 13px;
+  transition: all 0.15s;
+  border-left: 3px solid transparent;
+}
+
+.toc-item:hover {
+  color: var(--text);
+  background: rgba(88, 166, 255, 0.06);
+  border-left-color: var(--accent);
+}
+
+.toc-sub {
+  padding-left: 36px;
+  font-size: 12px;
+}
+
+/* Main content */
+.main {
+  margin-left: var(--sidebar-w);
+  flex: 1;
+  padding: 40px 60px;
+  max-width: 900px;
+}
+
+.main h2 {
+  font-size: 24px;
+  color: var(--text);
+  margin-top: 40px;
+  margin-bottom: 16px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--border);
+  scroll-margin-top: 20px;
+}
+
+.main h3 {
+  font-size: 18px;
+  color: var(--accent);
+  margin-top: 30px;
+  margin-bottom: 12px;
+  scroll-margin-top: 20px;
+}
+
+.main p {
+  margin-bottom: 14px;
+  color: var(--text);
+}
+
+.main blockquote {
+  border-left: 4px solid var(--accent);
+  padding: 12px 20px;
+  margin: 16px 0;
+  background: rgba(88, 166, 255, 0.06);
+  border-radius: 0 6px 6px 0;
+  color: var(--text-muted);
+  font-size: 14px;
+}
+
+.main hr {
+  border: none;
+  border-top: 1px solid var(--border);
+  margin: 30px 0;
+}
+
+.main a {
+  color: var(--accent);
+  text-decoration: none;
+}
+
+.main a:hover {
+  text-decoration: underline;
+}
+
+.main strong {
+  color: var(--text);
+  font-weight: 600;
+}
+
+.main code {
+  font-family: 'SF Mono', 'Fira Code', 'Cascadia Code', 'Consolas', monospace;
+  background: var(--bg-code);
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 13px;
+  color: var(--accent-orange);
+}
+
+.main pre {
+  background: var(--bg-code);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 16px 20px;
+  overflow-x: auto;
+  margin: 16px 0;
+  line-height: 1.5;
+}
+
+.main pre code {
+  background: none;
+  padding: 0;
+  color: var(--text);
+  font-size: 13px;
+  display: block;
+  white-space: pre;
+}
+
+/* Tables */
+.table-wrapper {
+  overflow-x: auto;
+  margin: 16px 0;
+}
+
+.main table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+
+.main table th {
+  background: var(--bg-code);
+  color: var(--accent);
+  text-align: left;
+  padding: 10px 14px;
+  border: 1px solid var(--border);
+  font-weight: 600;
+  font-size: 13px;
+}
+
+.main table td {
+  padding: 8px 14px;
+  border: 1px solid var(--border);
+  color: var(--text);
+}
+
+.main table tr:hover td {
+  background: rgba(88, 166, 255, 0.04);
+}
+
+/* SVG Diagrams */
+.diagram {
+  display: block;
+  max-width: 100%;
+  margin: 20px 0;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 15px;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  .sidebar {
+    display: none;
+  }
+  .main {
+    margin-left: 0;
+    padding: 20px;
+  }
+}
+
+/* Syntax highlighting hints */
+.main pre code .comment { color: #6a737d; }
+.main pre code .keyword { color: #ff7b72; }
+.main pre code .string { color: #a5d6ff; }
+.main pre code .number { color: #79c0ff; }
+</style>
+</head>
+<body>
+<div class="layout">
+  <nav class="sidebar">
+    <div class="sidebar-header">
+      <div class="module-tag">MODULE 04 - RL</div>
+      <div class="chapter-num">Chapter 04</div>
+      <h2>Online DPO</h2>
+    </div>
+    <a href="#section-1" class="toc-item ">Prerequisites</a>
+<a href="#section-2" class="toc-item ">Files</a>
+<a href="#section-3" class="toc-item ">What is Online DPO?</a>
+<a href="#section-4" class="toc-item toc-sub">The Problem with Offline DPO</a>
+<a href="#section-5" class="toc-item toc-sub">Online DPO's Solution: Generate Fresh Data Each Epoch</a>
+<a href="#section-6" class="toc-item ">Architecture</a>
+<a href="#section-7" class="toc-item toc-sub">generate_and_score</a>
+<a href="#section-8" class="toc-item toc-sub">OnlineDPODataset</a>
+<a href="#section-9" class="toc-item toc-sub">OnlineDPOTrainer</a>
+<a href="#section-10" class="toc-item ">Code Walkthrough</a>
+<a href="#section-11" class="toc-item toc-sub">Step 1: generate_and_score</a>
+<a href="#section-12" class="toc-item toc-sub">Step 2: OnlineDPODataset</a>
+<a href="#section-13" class="toc-item toc-sub">Step 3: OnlineDPOTrainer</a>
+<a href="#section-14" class="toc-item ">Training Tips</a>
+<a href="#section-15" class="toc-item toc-sub">Hyperparameters</a>
+<a href="#section-16" class="toc-item toc-sub">Common Pitfalls</a>
+<a href="#section-17" class="toc-item ">How to Run</a>
+<a href="#section-18" class="toc-item toc-sub">Run Tests</a>
+<a href="#section-19" class="toc-item toc-sub">Run Exercises</a>
+<a href="#section-20" class="toc-item ">Exercises</a>
+<a href="#section-21" class="toc-item toc-sub">Exercise Order</a>
+<a href="#section-22" class="toc-item toc-sub">Tips</a>
+<a href="#section-23" class="toc-item ">Key Takeaways</a>
+<a href="#section-24" class="toc-item ">Further Reading</a>
+
+  </nav>
+  <main class="main">
+    
+<svg viewBox="0 0 700 220" xmlns="http://www.w3.org/2000/svg" class="diagram">
+  <defs>
+    <marker id="arrowhead-odpo" markerWidth="10" markerHeight="7" refX="10" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#64b5f6"/>
+    </marker>
+  </defs>
+  <text x="350" y="20" text-anchor="middle" fill="#e0e0e0" font-size="14" font-weight="bold">Online DPO Training Loop</text>
+  <rect x="30" y="45" width="120" height="55" rx="6" fill="#1a237e" stroke="#5c6bc0" stroke-width="1.5"/>
+  <text x="90" y="68" text-anchor="middle" fill="#e8eaf6" font-size="12" font-weight="bold">Current Policy</text>
+  <text x="90" y="88" text-anchor="middle" fill="#9fa8da" font-size="10">pi(y|x)</text>
+  <line x1="150" y1="72" x2="200" y2="72" stroke="#64b5f6" stroke-width="2" marker-end="url(#arrowhead-odpo)"/>
+  <rect x="200" y="40" width="140" height="65" rx="6" fill="#0d47a1" stroke="#42a5f5" stroke-width="1.5"/>
+  <text x="270" y="60" text-anchor="middle" fill="#e3f2fd" font-size="11" font-weight="bold">Generate K candidates</text>
+  <text x="270" y="78" text-anchor="middle" fill="#90caf9" font-size="10">Temperature sampling</text>
+  <text x="270" y="95" text-anchor="middle" fill="#90caf9" font-size="10">y_1, y_2, ..., y_K</text>
+  <line x1="340" y1="72" x2="390" y2="72" stroke="#64b5f6" stroke-width="2" marker-end="url(#arrowhead-odpo)"/>
+  <rect x="390" y="40" width="120" height="65" rx="6" fill="#4a148c" stroke="#ab47bc" stroke-width="1.5"/>
+  <text x="450" y="60" text-anchor="middle" fill="#e1bee7" font-size="11" font-weight="bold">Reward Model</text>
+  <text x="450" y="78" text-anchor="middle" fill="#ce93d8" font-size="10">Score each candidate</text>
+  <text x="450" y="95" text-anchor="middle" fill="#ce93d8" font-size="10">r_1, r_2, ..., r_K</text>
+  <line x1="510" y1="72" x2="560" y2="72" stroke="#64b5f6" stroke-width="2" marker-end="url(#arrowhead-odpo)"/>
+  <rect x="560" y="40" width="110" height="65" rx="6" fill="#004d40" stroke="#26a69a" stroke-width="1.5"/>
+  <text x="615" y="60" text-anchor="middle" fill="#e0f2f1" font-size="11" font-weight="bold">Select</text>
+  <text x="615" y="78" text-anchor="middle" fill="#80cbc4" font-size="10">chosen = argmax(r)</text>
+  <text x="615" y="95" text-anchor="middle" fill="#80cbc4" font-size="10">rejected = argmin(r)</text>
+  <rect x="200" y="130" width="140" height="55" rx="6" fill="#b71c1c" stroke="#ef5350" stroke-width="1.5"/>
+  <text x="270" y="153" text-anchor="middle" fill="#ffcdd2" font-size="11" font-weight="bold">DPO Loss</text>
+  <text x="270" y="173" text-anchor="middle" fill="#ef9a9a" font-size="10">Train on fresh pairs</text>
+  <line x1="270" y1="105" x2="270" y2="130" stroke="#64b5f6" stroke-width="2" marker-end="url(#arrowhead-odpo)"/>
+  <line x1="200" y1="157" x2="90" y2="100" stroke="#ff8a65" stroke-width="2" stroke-dasharray="5,3" marker-end="url(#arrowhead-odpo)"/>
+  <text x="110" y="140" fill="#ff8a65" font-size="10">Update policy</text>
+  <text x="530" y="130" fill="#81c784" font-size="11" font-style="italic">Repeat each epoch</text>
+  <text x="530" y="148" fill="#81c784" font-size="11" font-style="italic">with fresh data</text>
+</svg>
+    <blockquote><p>**Module 04 -- Reinforcement Learning, Chapter 04**</p></blockquote>
+<p>Online DPO generates preference pairs on-the-fly from the current policy, rather than using a static dataset. This addresses the key limitation of offline DPO: the distribution mismatch between the data-generating policy and the policy being trained.</p>
+<hr>
+<h2 id="section-1">Prerequisites</h2>
+<p>- DPO basics (Module 04, Chapter 03) - Reward model basics (Module 04, Chapter 01) - PyTorch nn.Module, autograd, temperature sampling</p>
+<h2 id="section-2">Files</h2>
+<div class="table-wrapper"><table>
+<thead><tr>
+<th>File</th>
+<th>Purpose</th>
+</tr></thead>
+<tbody>
+<tr>
+<td>`online_dpo.py`</td>
+<td>Core implementation: generate_and_score, OnlineDPODataset, OnlineDPOTrainer</td>
+</tr>
+<tr>
+<td>`exercise.py`</td>
+<td>Fill-in-the-blank exercises to reinforce understanding</td>
+</tr>
+<tr>
+<td>`solution.py`</td>
+<td>Reference solutions for the exercises</td>
+</tr>
+<tr>
+<td>`tests.py`</td>
+<td>pytest tests for correctness</td>
+</tr>
+</tbody></table></div>
+<hr>
+<h2 id="section-3">What is Online DPO?</h2>
+<h3 id="section-4">The Problem with Offline DPO</h3>
+<p>In standard (offline) DPO, preference pairs are collected once from a fixed policy and reused throughout training. This causes a <strong>distribution shift</strong>: the data was generated by an older version of the policy, but we are training the current version. As the policy improves, the old preference data becomes less relevant.</p>
+<h3 id="section-5">Online DPO's Solution: Generate Fresh Data Each Epoch</h3>
+<p>Online DPO fixes this by generating fresh preference data from the current policy each epoch:</p>
+<p>1. <strong>Generate</strong> multiple candidate responses from the current policy 2. <strong>Score</strong> each candidate with a reward model 3. <strong>Select</strong> the best (chosen) and worst (rejected) as a preference pair 4. <strong>Train</strong> with standard DPO loss on the fresh pairs 5. <strong>Repeat</strong> each epoch with new data from the updated policy</p>
+<p>The trade-off is computational cost: generating responses is expensive. But the quality of training signal is much better because the preference pairs reflect the current policy's behavior.</p>
+<hr>
+<h2 id="section-6">Architecture</h2>
+<h3 id="section-7">generate_and_score</h3>
+<p>The core function that creates preference pairs from the current policy:</p>
+<pre><code class="language-python">def generate_and_score(policy, reward_model, prompt, max_new_tokens, num_candidates, temperature):
+    # 1. Generate num_candidates responses using temperature sampling
+    candidates = []
+    for _ in range(num_candidates):
+        input_ids = prompt.clone()
+        for _ in range(max_new_tokens):
+            logits = policy(input_ids)
+            next_token = sample(softmax(logits[-1] / temperature))
+            input_ids = cat([input_ids, next_token])
+        candidates.append(input_ids)
+
+    # 2. Score with reward model
+    rewards = reward_model(stack(candidates))
+
+    # 3. Select best/worst
+    chosen = candidates[rewards.argmax()]
+    rejected = candidates[rewards.argmin()]
+
+    # 4. Compute reference log probs
+    chosen_ref_lp = compute_log_probs(policy, chosen)
+    rejected_ref_lp = compute_log_probs(policy, rejected)
+
+    return {chosen, rejected, rewards, ref_log_probs}</code></pre>
+<h3 id="section-8">OnlineDPODataset</h3>
+<p>Dynamically creates preference pairs from online generation:</p>
+<pre><code class="language-python">dataset = OnlineDPODataset(policy, reward_model, prompts)
+# Generates fresh pairs from the current policy
+# Can call dataset.refresh() to regenerate after policy updates</code></pre>
+<h3 id="section-9">OnlineDPOTrainer</h3>
+<p>Combines generation and training in one loop:</p>
+<pre><code class="language-python">trainer = OnlineDPOTrainer(model, ref_model, reward_model, prompts)
+for epoch in range(num_epochs):
+    dataset = trainer.generate()  # Fresh preference pairs
+    for batch in dataset:
+        metrics = trainer.train_step(batch)  # DPO loss</code></pre>
+<hr>
+<h2 id="section-10">Code Walkthrough</h2>
+<h3 id="section-11">Step 1: generate_and_score</h3>
+<p>Generate multiple responses and score them:</p>
+<pre><code class="language-python"># Temperature sampling for diverse candidates
+logits = policy(input_ids)[:, -1, :] / temperature
+probs = F.softmax(logits, dim=-1)
+next_token = torch.multinomial(probs, num_samples=1)
+
+# Score all candidates with reward model
+rewards = reward_model(candidate_batch)
+
+# Select best (chosen) and worst (rejected)
+chosen_idx = rewards.argmax()
+rejected_idx = rewards.argmin()</code></pre>
+<h3 id="section-12">Step 2: OnlineDPODataset</h3>
+<p>Pre-computes reference log probs at generation time:</p>
+<pre><code class="language-python"># Reference log probs computed during generation (frozen snapshot)
+chosen_ref_lp = compute_log_probs(policy, chosen_ids, prompt_len)
+rejected_ref_lp = compute_log_probs(policy, rejected_ids, prompt_len)</code></pre>
+<h3 id="section-13">Step 3: OnlineDPOTrainer</h3>
+<p>Standard DPO training step on fresh data:</p>
+<pre><code class="language-python"># Compute current policy log probs
+policy_chosen = compute_log_probs(model, chosen_ids, start_idx)
+policy_rejected = compute_log_probs(model, rejected_ids, start_idx)
+
+# DPO loss using pre-computed reference log probs
+loss = dpo_loss(policy_chosen, policy_rejected, ref_chosen, ref_rejected)
+loss.backward()
+optimizer.step()</code></pre>
+<hr>
+<h2 id="section-14">Training Tips</h2>
+<h3 id="section-15">Hyperparameters</h3>
+<div class="table-wrapper"><table>
+<thead><tr>
+<th>Parameter</th>
+<th>Typical Range</th>
+<th>Description</th>
+</tr></thead>
+<tbody>
+<tr>
+<td>`beta`</td>
+<td>0.1 - 0.5</td>
+<td>Temperature for DPO loss</td>
+</tr>
+<tr>
+<td>`lr`</td>
+<td>1e-7 - 5e-6</td>
+<td>Learning rate</td>
+</tr>
+<tr>
+<td>`num_candidates`</td>
+<td>4 - 16</td>
+<td>Candidates per prompt (more = better signal)</td>
+</tr>
+<tr>
+<td>`temperature`</td>
+<td>0.7 - 1.2</td>
+<td>Sampling temperature for generation</td>
+</tr>
+<tr>
+<td>`max_new_tokens`</td>
+<td>32 - 256</td>
+<td>Response length</td>
+</tr>
+</tbody></table></div>
+<h3 id="section-16">Common Pitfalls</h3>
+<p>1. <strong>Too few candidates</strong>: With only 2 candidates, the preference signal is noisy. Use at least 4.</p>
+<p>2. <strong>Temperature too low</strong>: Makes all candidates similar, reducing the quality of preference pairs.</p>
+<p>3. <strong>Temperature too high</strong>: Produces incoherent responses that don't provide useful training signal.</p>
+<p>4. <strong>Same-length prompts required</strong>: For batching, prompts should have the same length (or use padding).</p>
+<hr>
+<h2 id="section-17">How to Run</h2>
+<h3 id="section-18">Run Tests</h3>
+<pre><code class="language-bash">cd /path/to/llm-from-scratch
+pytest 04-rl/04_online_dpo/tests.py -v</code></pre>
+<h3 id="section-19">Run Exercises</h3>
+<p>Open <code>exercise.py</code> and fill in the <code>TODO</code> sections. Then verify:</p>
+<pre><code class="language-bash">pytest 04-rl/04_online_dpo/tests.py -v</code></pre>
+<hr>
+<h2 id="section-20">Exercises</h2>
+<p>Open <code>exercise.py</code> to practice implementing Online DPO components yourself.</p>
+<h3 id="section-21">Exercise Order</h3>
+<p>1. <strong><code>generate_and_score</code></strong> -- Generate responses and score with reward model 2. <strong><code>OnlineDPODataset.__init__</code></strong> -- Set up the dynamic dataset 3. <strong><code>OnlineDPODataset.refresh</code></strong> -- Regenerate preference pairs 4. <strong><code>OnlineDPOTrainer.__init__</code></strong> -- Set up the trainer 5. <strong><code>OnlineDPOTrainer.train_step</code></strong> -- Implement the DPO training step 6. <strong><code>OnlineDPOTrainer.train_epoch</code></strong> -- Combine generation and training</p>
+<h3 id="section-22">Tips</h3>
+<p>- Start with <code>generate_and_score</code>. The key is temperature sampling with <code>torch.multinomial</code>. - In <code>OnlineDPODataset</code>, freeze the reward model and call <code>refresh()</code> in <code>__init__</code>. - In <code>OnlineDPOTrainer.train_epoch</code>, generate fresh data then train in mini-batches. - Reference log probs should be computed at generation time (frozen snapshot).</p>
+<hr>
+<h2 id="section-23">Key Takeaways</h2>
+<p>1. <strong>Online generation fixes distribution shift.</strong> By generating preference pairs from the current policy each epoch, the training data always reflects the policy's current behavior.</p>
+<p>2. <strong>Reward model provides the signal.</strong> Unlike offline DPO where preferences are pre-collected, online DPO uses a reward model to score generated responses and create preference pairs.</p>
+<p>3. <strong>More candidates = better signal.</strong> Generating more candidates per prompt gives the reward model more options to distinguish good from bad responses.</p>
+<p>4. <strong>Trade-off: compute vs. quality.</strong> Online DPO is more expensive than offline DPO because it generates responses each epoch. But the training signal is much better.</p>
+<p>5. <strong>Reference log probs are frozen.</strong> The reference log probs are computed at generation time and stored, not recomputed during training. This is important for stable DPO training.</p>
+<hr>
+<h2 id="section-24">Further Reading</h2>
+<p>- <a href="https://arxiv.org/abs/2305.18290">Direct Preference Optimization: Your Language Model is Secretly a Reward Model (Rafailov et al., 2023)</a> -- The original DPO paper - <a href="https://arxiv.org/abs/2401.01335">Self-Play Fine-Tuning Converts Weak Language Models to Strong Language Models (Chen et al., 2024)</a> -- SPIN, related online DPO approach - <a href="https://arxiv.org/abs/2402.04792">Online DPO vs Offline DPO: A Comparison (various)</a> -- Analysis of online vs offline preference learning</p>
+  </main>
+</div>
+</body>
+</html>

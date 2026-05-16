@@ -1,0 +1,501 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Proximal Policy Optimization (PPO) - LLM From Scratch</title>
+<style>
+:root {
+  --bg: #0f1117;
+  --bg-card: #161b22;
+  --bg-sidebar: #0d1117;
+  --bg-code: #1a1e28;
+  --text: #e6edf3;
+  --text-muted: #8b949e;
+  --text-dim: #6e7681;
+  --accent: #58a6ff;
+  --accent-green: #3fb950;
+  --accent-orange: #d29922;
+  --accent-red: #f85149;
+  --accent-purple: #bc8cff;
+  --border: #21262d;
+  --border-light: #30363d;
+  --sidebar-w: 280px;
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  line-height: 1.7;
+  font-size: 15px;
+}
+
+.layout {
+  display: flex;
+  min-height: 100vh;
+}
+
+/* Sidebar */
+.sidebar {
+  width: var(--sidebar-w);
+  background: var(--bg-sidebar);
+  border-right: 1px solid var(--border);
+  position: fixed;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  overflow-y: auto;
+  z-index: 100;
+  padding: 20px 0;
+}
+
+.sidebar-header {
+  padding: 10px 20px 20px;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 10px;
+}
+
+.sidebar-header .module-tag {
+  display: inline-block;
+  background: var(--accent);
+  color: #000;
+  font-size: 10px;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 10px;
+  margin-bottom: 8px;
+  letter-spacing: 0.5px;
+}
+
+.sidebar-header h2 {
+  font-size: 16px;
+  color: var(--text);
+  font-weight: 600;
+  line-height: 1.3;
+}
+
+.sidebar-header .chapter-num {
+  color: var(--accent);
+  font-size: 12px;
+  font-weight: 500;
+  margin-bottom: 4px;
+}
+
+.toc-item {
+  display: block;
+  padding: 6px 20px;
+  color: var(--text-muted);
+  text-decoration: none;
+  font-size: 13px;
+  transition: all 0.15s;
+  border-left: 3px solid transparent;
+}
+
+.toc-item:hover {
+  color: var(--text);
+  background: rgba(88, 166, 255, 0.06);
+  border-left-color: var(--accent);
+}
+
+.toc-sub {
+  padding-left: 36px;
+  font-size: 12px;
+}
+
+/* Main content */
+.main {
+  margin-left: var(--sidebar-w);
+  flex: 1;
+  padding: 40px 60px;
+  max-width: 900px;
+}
+
+.main h2 {
+  font-size: 24px;
+  color: var(--text);
+  margin-top: 40px;
+  margin-bottom: 16px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--border);
+  scroll-margin-top: 20px;
+}
+
+.main h3 {
+  font-size: 18px;
+  color: var(--accent);
+  margin-top: 30px;
+  margin-bottom: 12px;
+  scroll-margin-top: 20px;
+}
+
+.main p {
+  margin-bottom: 14px;
+  color: var(--text);
+}
+
+.main blockquote {
+  border-left: 4px solid var(--accent);
+  padding: 12px 20px;
+  margin: 16px 0;
+  background: rgba(88, 166, 255, 0.06);
+  border-radius: 0 6px 6px 0;
+  color: var(--text-muted);
+  font-size: 14px;
+}
+
+.main hr {
+  border: none;
+  border-top: 1px solid var(--border);
+  margin: 30px 0;
+}
+
+.main a {
+  color: var(--accent);
+  text-decoration: none;
+}
+
+.main a:hover {
+  text-decoration: underline;
+}
+
+.main strong {
+  color: var(--text);
+  font-weight: 600;
+}
+
+.main code {
+  font-family: 'SF Mono', 'Fira Code', 'Cascadia Code', 'Consolas', monospace;
+  background: var(--bg-code);
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 13px;
+  color: var(--accent-orange);
+}
+
+.main pre {
+  background: var(--bg-code);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 16px 20px;
+  overflow-x: auto;
+  margin: 16px 0;
+  line-height: 1.5;
+}
+
+.main pre code {
+  background: none;
+  padding: 0;
+  color: var(--text);
+  font-size: 13px;
+  display: block;
+  white-space: pre;
+}
+
+/* Tables */
+.table-wrapper {
+  overflow-x: auto;
+  margin: 16px 0;
+}
+
+.main table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+
+.main table th {
+  background: var(--bg-code);
+  color: var(--accent);
+  text-align: left;
+  padding: 10px 14px;
+  border: 1px solid var(--border);
+  font-weight: 600;
+  font-size: 13px;
+}
+
+.main table td {
+  padding: 8px 14px;
+  border: 1px solid var(--border);
+  color: var(--text);
+}
+
+.main table tr:hover td {
+  background: rgba(88, 166, 255, 0.04);
+}
+
+/* SVG Diagrams */
+.diagram {
+  display: block;
+  max-width: 100%;
+  margin: 20px 0;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 15px;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  .sidebar {
+    display: none;
+  }
+  .main {
+    margin-left: 0;
+    padding: 20px;
+  }
+}
+
+/* Syntax highlighting hints */
+.main pre code .comment { color: #6a737d; }
+.main pre code .keyword { color: #ff7b72; }
+.main pre code .string { color: #a5d6ff; }
+.main pre code .number { color: #79c0ff; }
+</style>
+</head>
+<body>
+<div class="layout">
+  <nav class="sidebar">
+    <div class="sidebar-header">
+      <div class="module-tag">MODULE 04 - RL</div>
+      <div class="chapter-num">Chapter 02</div>
+      <h2>Proximal Policy Optimization (PPO)</h2>
+    </div>
+    <a href="#section-1" class="toc-item ">Prerequisites</a>
+<a href="#section-2" class="toc-item ">Files</a>
+<a href="#section-3" class="toc-item ">What is PPO?</a>
+<a href="#section-4" class="toc-item toc-sub">The Problem with Vanilla Policy Gradients</a>
+<a href="#section-5" class="toc-item toc-sub">PPO's Solution: Clipped Surrogate</a>
+<a href="#section-6" class="toc-item toc-sub">KL Penalty</a>
+<a href="#section-7" class="toc-item ">Architecture</a>
+<a href="#section-8" class="toc-item toc-sub">PPOClipLoss</a>
+<a href="#section-9" class="toc-item toc-sub">GAE (Generalized Advantage Estimation)</a>
+<a href="#section-10" class="toc-item toc-sub">PPOTrainer</a>
+<a href="#section-11" class="toc-item toc-sub">rollout</a>
+<a href="#section-12" class="toc-item ">Code Walkthrough</a>
+<a href="#section-13" class="toc-item toc-sub">Step 1: PPO Clip Loss</a>
+<a href="#section-14" class="toc-item toc-sub">Step 2: GAE</a>
+<a href="#section-15" class="toc-item toc-sub">Step 3: Rollout</a>
+<a href="#section-16" class="toc-item toc-sub">Step 4: PPO Update</a>
+<a href="#section-17" class="toc-item ">Training Tips</a>
+<a href="#section-18" class="toc-item toc-sub">Hyperparameters</a>
+<a href="#section-19" class="toc-item toc-sub">Common Pitfalls</a>
+<a href="#section-20" class="toc-item ">How to Run</a>
+<a href="#section-21" class="toc-item toc-sub">Run Tests</a>
+<a href="#section-22" class="toc-item toc-sub">Run Exercises</a>
+<a href="#section-23" class="toc-item ">Exercises</a>
+<a href="#section-24" class="toc-item toc-sub">Exercise Order</a>
+<a href="#section-25" class="toc-item toc-sub">Tips</a>
+<a href="#section-26" class="toc-item ">Key Takeaways</a>
+<a href="#section-27" class="toc-item ">Further Reading</a>
+
+  </nav>
+  <main class="main">
+    
+<svg viewBox="0 0 700 200" xmlns="http://www.w3.org/2000/svg" class="diagram">
+  <defs>
+    <marker id="arrowhead-ppo" markerWidth="10" markerHeight="7" refX="10" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#64b5f6"/>
+    </marker>
+  </defs>
+  <text x="350" y="20" text-anchor="middle" fill="#e0e0e0" font-size="14" font-weight="bold">PPO Clipped Surrogate Loss</text>
+  <rect x="30" y="45" width="180" height="140" rx="6" fill="#1a237e" stroke="#5c6bc0" stroke-width="1.5"/>
+  <text x="120" y="68" text-anchor="middle" fill="#9fa8da" font-size="12">ratio = exp(log pi_new - log pi_old)</text>
+  <text x="120" y="90" text-anchor="middle" fill="#e8eaf6" font-size="12" font-weight="bold">surr1 = ratio * A</text>
+  <text x="120" y="112" text-anchor="middle" fill="#e8eaf6" font-size="12" font-weight="bold">surr2 = clip(ratio, 1-eps, 1+eps) * A</text>
+  <text x="120" y="140" text-anchor="middle" fill="#ff8a65" font-size="13" font-weight="bold">loss = -min(surr1, surr2)</text>
+  <text x="120" y="170" text-anchor="middle" fill="#81c784" font-size="11">+ kl_weight * KL(pi || pi_ref)</text>
+  <line x1="210" y1="120" x2="270" y2="120" stroke="#64b5f6" stroke-width="2" marker-end="url(#arrowhead-ppo)"/>
+  <rect x="270" y="45" width="180" height="140" rx="6" fill="#0d47a1" stroke="#42a5f5" stroke-width="1.5"/>
+  <text x="360" y="68" text-anchor="middle" fill="#90caf9" font-size="12">When ratio &gt; 1+eps and A &gt; 0:</text>
+  <text x="360" y="88" text-anchor="middle" fill="#e3f2fd" font-size="11">surr2 caps at (1+eps)*A</text>
+  <text x="360" y="115" text-anchor="middle" fill="#90caf9" font-size="12">When ratio &lt; 1-eps and A &lt; 0:</text>
+  <text x="360" y="135" text-anchor="middle" fill="#e3f2fd" font-size="11">surr2 floors at (1-eps)*A</text>
+  <text x="360" y="170" text-anchor="middle" fill="#ffcc02" font-size="12" font-weight="bold">Trust Region</text>
+  <line x1="450" y1="120" x2="510" y2="120" stroke="#64b5f6" stroke-width="2" marker-end="url(#arrowhead-ppo)"/>
+  <rect x="510" y="60" width="160" height="100" rx="6" fill="#004d40" stroke="#26a69a" stroke-width="1.5"/>
+  <text x="590" y="85" text-anchor="middle" fill="#e0f2f1" font-size="12" font-weight="bold">GAE</text>
+  <text x="590" y="108" text-anchor="middle" fill="#80cbc4" font-size="11">delta_t = r_t + gamma*V(s_{t+1}) - V(s_t)</text>
+  <text x="590" y="128" text-anchor="middle" fill="#80cbc4" font-size="11">A_t = delta_t + gamma*lambda*A_{t+1}</text>
+  <text x="590" y="148" text-anchor="middle" fill="#b2dfdb" font-size="11">lambda=0.95, gamma=0.99</text>
+</svg>
+    <blockquote><p>**Module 04 -- Reinforcement Learning, Chapter 02**</p></blockquote>
+<p>PPO is the workhorse algorithm for RLHF (Reinforcement Learning from Human Feedback). After a reward model scores text quality (Chapter 01), PPO fine-tunes the language model to maximize those rewards while staying close to the original model. It does this through a clever clipped objective that prevents catastrophic policy updates.</p>
+<p>This chapter implements the core PPO components: the clipped surrogate loss, Generalized Advantage Estimation (GAE), the PPO trainer, and a rollout function for generating responses.</p>
+<hr>
+<h2 id="section-1">Prerequisites</h2>
+<p>- Reward model basics (Module 04, Chapter 01) - PyTorch nn.Module, autograd - Basic understanding of policy gradients and advantage functions</p>
+<h2 id="section-2">Files</h2>
+<div class="table-wrapper"><table>
+<thead><tr>
+<th>File</th>
+<th>Purpose</th>
+</tr></thead>
+<tbody>
+<tr>
+<td>`ppo.py`</td>
+<td>Core implementation: PPOClipLoss, GAE, PPOTrainer, rollout</td>
+</tr>
+<tr>
+<td>`exercise.py`</td>
+<td>Fill-in-the-blank exercises to reinforce understanding</td>
+</tr>
+<tr>
+<td>`solution.py`</td>
+<td>Reference solutions for the exercises</td>
+</tr>
+<tr>
+<td>`tests.py`</td>
+<td>pytest tests for correctness</td>
+</tr>
+</tbody></table></div>
+<hr>
+<h2 id="section-3">What is PPO?</h2>
+<h3 id="section-4">The Problem with Vanilla Policy Gradients</h3>
+<p>In policy gradient methods, we update the policy to increase the probability of good actions:</p>
+<pre><code>gradient = E[advantage * grad(log pi(a|s))]</code></pre>
+<p>But large updates can destroy the policy. If we increase the probability of an action too much, the policy might overfit to recent experiences and forget everything else.</p>
+<h3 id="section-5">PPO's Solution: Clipped Surrogate</h3>
+<p>PPO prevents large updates by clipping the probability ratio:</p>
+<pre><code>ratio = pi_new(a|s) / pi_old(a|s)
+surr1 = ratio * advantages
+surr2 = clip(ratio, 1-eps, 1+eps) * advantages
+loss = -min(surr1, surr2)</code></pre>
+<p>When <code>ratio > 1+eps</code> (policy changed too much in the positive direction): - <code>surr2 = (1+eps) * advantages</code> caps the objective - The gradient cannot push the policy further</p>
+<p>When <code>ratio < 1-eps</code> (policy changed too much in the negative direction): - <code>surr2 = (1-eps) * advantages</code> floors the objective - The gradient cannot pull the policy further back</p>
+<p>This creates a "trust region" where the policy can safely improve.</p>
+<h3 id="section-6">KL Penalty</h3>
+<p>In RLHF, we also add a KL divergence penalty from a reference model (usually the pretrained model):</p>
+<pre><code>loss = policy_loss + kl_weight * KL(pi || pi_ref)</code></pre>
+<p>This prevents the policy from diverging too far from the pretrained model, which would make the output incoherent.</p>
+<hr>
+<h2 id="section-7">Architecture</h2>
+<h3 id="section-8">PPOClipLoss</h3>
+<pre><code class="language-python">class PPOClipLoss(nn.Module):
+    def __init__(self, clip_eps, kl_weight):
+        ...
+
+    def forward(self, log_probs, old_log_probs, advantages, log_probs_ref):
+        kl = approx_kl_divergence(log_probs, log_probs_ref)
+        ratio = (log_probs - old_log_probs).exp()
+        surr1 = ratio * advantages
+        surr2 = clip(ratio, 1-eps, 1+eps) * advantages
+        loss = -min(surr1, surr2) + kl_weight * kl
+        return loss, kl</code></pre>
+<h3 id="section-9">GAE (Generalized Advantage Estimation)</h3>
+<p>GAE computes advantage estimates that balance bias and variance:</p>
+<pre><code class="language-python">delta_t = r_t + gamma * V(s_{t+1}) - V(s_t)    # TD error
+A_t = delta_t + (gamma * lambda) * A_{t+1}       # Accumulated advantage</code></pre>
+<p>- <code>lambda = 0</code>: One-step TD (high bias, low variance) - <code>lambda = 1</code>: Monte Carlo (low bias, high variance) - Typical: <code>lambda = 0.95</code>, <code>gamma = 0.99</code></p>
+<h3 id="section-10">PPOTrainer</h3>
+<p>Orchestrates the full PPO update:</p>
+<pre><code class="language-python">trainer = PPOTrainer(model, ref_model, clip_eps=0.2, kl_weight=0.1)
+metrics = trainer.step(sequences, old_log_probs, rewards, values, prompt_len)</code></pre>
+<h3 id="section-11">rollout</h3>
+<p>Generates responses from the policy and collects log probabilities:</p>
+<pre><code class="language-python">result = rollout(model, prompt, max_new_tokens=50, vocab_size=32000)
+# result["sequences"], result["log_probs"], result["values"]</code></pre>
+<hr>
+<h2 id="section-12">Code Walkthrough</h2>
+<h3 id="section-13">Step 1: PPO Clip Loss</h3>
+<p>The clip loss is the heart of PPO. It computes two surrogate objectives and takes the minimum (pessimistic bound):</p>
+<pre><code class="language-python">ratio = (log_probs - old_log_probs).exp()
+surr1 = ratio * advantages
+surr2 = ratio.clamp(1 - eps, 1 + eps) * advantages
+loss = -torch.min(surr1, surr2) + kl_weight * kl</code></pre>
+<h3 id="section-14">Step 2: GAE</h3>
+<p>GAE computes advantages by backward accumulation of TD errors:</p>
+<pre><code class="language-python">for t in reversed(range(seq_len)):
+    advantage = delta_t + gamma * lambda * advantage
+    advantages[:, t] = advantage</code></pre>
+<h3 id="section-15">Step 3: Rollout</h3>
+<p>Generate tokens autoregressively, collecting log probs and values:</p>
+<pre><code class="language-python">for _ in range(max_new_tokens):
+    logits, values = model(sequences)
+    next_token = sample(logits[:, -1, :] / temperature)
+    sequences = cat([sequences, next_token])</code></pre>
+<h3 id="section-16">Step 4: PPO Update</h3>
+<p>The trainer performs multiple epochs of PPO updates:</p>
+<pre><code class="language-python">for epoch in range(ppo_epochs):
+    new_log_probs = compute_log_probs(model, sequences)
+    ref_log_probs = compute_log_probs(ref_model, sequences)
+    loss, kl = ppo_loss(new_log_probs, old_log_probs, advantages, ref_log_probs)
+    loss.backward()
+    optimizer.step()</code></pre>
+<hr>
+<h2 id="section-17">Training Tips</h2>
+<h3 id="section-18">Hyperparameters</h3>
+<div class="table-wrapper"><table>
+<thead><tr>
+<th>Parameter</th>
+<th>Typical Range</th>
+<th>Description</th>
+</tr></thead>
+<tbody>
+<tr>
+<td>`clip_eps`</td>
+<td>0.1 - 0.3</td>
+<td>Clipping parameter (0.2 is common)</td>
+</tr>
+<tr>
+<td>`kl_weight`</td>
+<td>0.01 - 0.5</td>
+<td>KL penalty weight</td>
+</tr>
+<tr>
+<td>`gamma`</td>
+<td>0.99</td>
+<td>Discount factor</td>
+</tr>
+<tr>
+<td>`lam`</td>
+<td>0.95</td>
+<td>GAE lambda</td>
+</tr>
+<tr>
+<td>`lr`</td>
+<td>1e-6 - 1e-5</td>
+<td>Learning rate</td>
+</tr>
+<tr>
+<td>`ppo_epochs`</td>
+<td>2 - 4</td>
+<td>PPO update epochs per batch</td>
+</tr>
+</tbody></table></div>
+<h3 id="section-19">Common Pitfalls</h3>
+<p>1. <strong>Reward hacking</strong>: The policy finds ways to get high rewards without actually being better. Use KL penalty and diverse reward signals.</p>
+<p>2. <strong>KL divergence explosion</strong>: If <code>kl_weight</code> is too low, the policy can diverge from the reference model, producing incoherent text. Monitor KL and increase <code>kl_weight</code> if needed.</p>
+<p>3. <strong>Value function accuracy</strong>: If the value function is inaccurate, advantage estimates will be noisy, leading to unstable training. Consider pre-training the value function.</p>
+<p>4. <strong>Learning rate sensitivity</strong>: PPO is sensitive to learning rate. Too high causes instability; too low causes slow convergence.</p>
+<hr>
+<h2 id="section-20">How to Run</h2>
+<h3 id="section-21">Run Tests</h3>
+<pre><code class="language-bash">cd /path/to/llm-from-scratch
+pytest 04-rl/02_ppo/tests.py -v</code></pre>
+<h3 id="section-22">Run Exercises</h3>
+<p>Open <code>exercise.py</code> and fill in the <code>TODO</code> sections. Then verify:</p>
+<pre><code class="language-bash">pytest 04-rl/02_ppo/tests.py -v</code></pre>
+<hr>
+<h2 id="section-23">Exercises</h2>
+<p>Open <code>exercise.py</code> to practice implementing PPO components yourself.</p>
+<h3 id="section-24">Exercise Order</h3>
+<p>1. <strong><code>PPOClipLossExercise.forward</code></strong> -- Implement the clipped surrogate objective 2. <strong><code>GAEExercise.forward</code></strong> -- Implement Generalized Advantage Estimation 3. <strong><code>rollout_exercise</code></strong> -- Implement autoregressive generation with log prob collection</p>
+<h3 id="section-25">Tips</h3>
+<p>- Start with <code>PPOClipLoss</code>. The key formula is: <code>-min(ratio * A, clip(ratio) * A)</code>. - For <code>GAE</code>, work backwards from the last timestep. The recurrence is: <code>A_t = delta_t + gamma * lambda * A_{t+1}</code>. - For <code>rollout</code>, use <code>torch.multinomial</code> for sampling and <code>log_softmax</code> + <code>gather</code> for log probs. - Use <code>model.eval()</code> during generation to disable dropout.</p>
+<hr>
+<h2 id="section-26">Key Takeaways</h2>
+<p>1. <strong>PPO clips the policy update.</strong> By taking <code>min(surr1, surr2)</code>, PPO ensures the policy cannot change too much in a single update. This is the key insight that makes PPO stable.</p>
+<p>2. <strong>GAE balances bias and variance.</strong> The lambda parameter controls the tradeoff between one-step TD (biased but low variance) and Monte Carlo (unbiased but high variance). Lambda=0.95 is a good default.</p>
+<p>3. <strong>KL penalty prevents divergence.</strong> In RLHF, we add a KL penalty from the reference model to keep the policy close to the pretrained model. This prevents reward hacking and maintains text quality.</p>
+<p>4. <strong>PPO is an iterative algorithm.</strong> Each batch of experience is used for multiple PPO update epochs. This data efficiency is important because generating rollouts is expensive for language models.</p>
+<p>5. <strong>The ratio is the key quantity.</strong> <code>ratio = pi_new / pi_old</code> measures how much the policy has changed. PPO's clipping ensures this ratio stays close to 1.</p>
+<hr>
+<h2 id="section-27">Further Reading</h2>
+<p>- <a href="https://arxiv.org/abs/1707.06347">Proximal Policy Optimization Algorithms (Schulman et al., 2017)</a> -- The original PPO paper - <a href="https://arxiv.org/abs/2203.02155">Training Language Models to Follow Instructions with Human Feedback (Ouyang et al., 2022)</a> -- InstructGPT, which popularized PPO for RLHF - <a href="https://arxiv.org/abs/1506.02438">High-Dimensional Continuous Control Using Generalized Advantage Estimation (Schulman et al., 2016)</a> -- The GAE paper - <a href="https://arxiv.org/abs/2209.00796">Some Things You Should Know About Proximal Policy Optimization (Huang et al., 2022)</a> -- Practical tips for PPO</p>
+  </main>
+</div>
+</body>
+</html>

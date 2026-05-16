@@ -1,0 +1,495 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Training Loop - LLM Pretraining</title>
+<style>
+:root {
+  --bg: #0f1117;
+  --bg-secondary: #161822;
+  --sidebar-bg: #1a1d2e;
+  --text: #e2e8f0;
+  --text-muted: #94a3b8;
+  --accent: #60a5fa;
+  --accent2: #a78bfa;
+  --accent3: #34d399;
+  --border: #2d3148;
+  --code-bg: #1e2235;
+  --inline-code-bg: #2a2f45;
+}
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  line-height: 1.7;
+  display: flex;
+}
+.sidebar {
+  width: 280px;
+  background: var(--sidebar-bg);
+  border-right: 1px solid var(--border);
+  padding: 24px 0;
+  position: fixed;
+  top: 0; left: 0; bottom: 0;
+  overflow-y: auto;
+  z-index: 100;
+}
+.sidebar h2 {
+  color: var(--accent);
+  font-size: 14px;
+  text-transform: uppercase;
+  letter-spacing: 1.5px;
+  padding: 0 20px 16px;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 12px;
+}
+.sidebar a {
+  display: block;
+  color: var(--text-muted);
+  text-decoration: none;
+  padding: 8px 20px;
+  font-size: 14px;
+  transition: all 0.2s;
+  border-left: 3px solid transparent;
+}
+.sidebar a:hover, .sidebar a.active {
+  color: var(--accent);
+  background: rgba(96,165,250,0.08);
+  border-left-color: var(--accent);
+}
+.sidebar .chapter-link {
+  color: var(--accent2);
+  font-weight: 600;
+  margin-top: 8px;
+}
+.content {
+  margin-left: 280px;
+  flex: 1;
+  padding: 48px 64px;
+  max-width: 960px;
+}
+h1 {
+  font-size: 2.4em;
+  color: #fff;
+  margin-bottom: 8px;
+  letter-spacing: -0.5px;
+}
+.subtitle {
+  color: var(--accent2);
+  font-size: 1.1em;
+  margin-bottom: 32px;
+  padding-bottom: 24px;
+  border-bottom: 1px solid var(--border);
+}
+h2 {
+  font-size: 1.6em;
+  color: #fff;
+  margin-top: 48px;
+  margin-bottom: 16px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--border);
+}
+h3 {
+  font-size: 1.2em;
+  color: var(--accent);
+  margin-top: 32px;
+  margin-bottom: 12px;
+}
+p { margin-bottom: 16px; }
+ul, ol { margin-bottom: 16px; padding-left: 24px; }
+li { margin-bottom: 6px; }
+pre {
+  background: var(--code-bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 20px;
+  overflow-x: auto;
+  margin-bottom: 20px;
+  font-size: 14px;
+  line-height: 1.6;
+}
+code {
+  font-family: "SF Mono", "Fira Code", "JetBrains Mono", monospace;
+  font-size: 0.9em;
+}
+p code, li code {
+  background: var(--inline-code-bg);
+  padding: 2px 6px;
+  border-radius: 4px;
+  color: var(--accent3);
+}
+.kw { color: #c792ea; }
+.fn { color: #82aaff; }
+.str { color: #c3e88d; }
+.cm { color: #546e7a; }
+.num { color: #f78c6c; }
+.op { color: #89ddff; }
+.dec { color: #ffcb6b; }
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-bottom: 20px;
+}
+th {
+  background: var(--sidebar-bg);
+  color: var(--accent);
+  text-align: left;
+  padding: 10px 16px;
+  font-size: 14px;
+  border-bottom: 2px solid var(--border);
+}
+td {
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--border);
+  font-size: 14px;
+}
+.diagram-container {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 32px;
+  margin: 24px 0;
+  text-align: center;
+}
+.diagram-container svg { max-width: 100%; }
+.callout {
+  background: rgba(96,165,250,0.08);
+  border-left: 4px solid var(--accent);
+  padding: 16px 20px;
+  margin: 20px 0;
+  border-radius: 0 8px 8px 0;
+  font-size: 14px;
+}
+.callout strong { color: var(--accent); }
+.prereq {
+  background: rgba(167,139,250,0.08);
+  border-left: 4px solid var(--accent2);
+  padding: 16px 20px;
+  margin: 20px 0;
+  border-radius: 0 8px 8px 0;
+  font-size: 14px;
+}
+.summary-table td:first-child {
+  font-weight: 600;
+  color: var(--accent3);
+  white-space: nowrap;
+}
+@media (max-width: 900px) {
+  .sidebar { display: none; }
+  .content { margin-left: 0; padding: 24px 20px; }
+}
+</style>
+</head>
+<body>
+<nav class="sidebar">
+  <h2>Training Loop</h2>
+  <a href="#components">Training Loop Components</a>
+  <a href="#cosine-lr">Cosine LR with Warmup</a>
+  <a href="#grad-clip">Gradient Clipping</a>
+  <a href="#grad-accum">Gradient Accumulation</a>
+  <a href="#mixed-precision">Mixed Precision</a>
+  <a href="#weight-decay">Weight Decay</a>
+  <a href="#walkthrough">Code Walkthrough</a>
+  <a href="#putting-together">Putting It All Together</a>
+  <a href="#exercises">Exercises</a>
+  <a href="#summary">Summary</a>
+  <div style="margin-top:24px; padding-top:16px; border-top:1px solid var(--border);">
+    <a class="chapter-link" href="../01_data_pipeline/tutorial.html">Chapter 01: Data Pipeline</a>
+    <a class="chapter-link" href="../02_data_engineering/tutorial.html">Chapter 02: Data Engineering</a>
+    <a class="chapter-link" href="../04_distributed_training/tutorial.html">Chapter 04: Distributed Training</a>
+    <a class="chapter-link" href="../05_scaling_laws/tutorial.html">Chapter 05: Scaling Laws</a>
+    <a class="chapter-link" href="../06_evaluation/tutorial.html">Chapter 06: Evaluation</a>
+  </div>
+</nav>
+
+<main class="content">
+<h1>Training Loop</h1>
+<p class="subtitle">Module 02 -- Pretraining, Chapter 03</p>
+
+<p>The training loop is the engine of pretraining. It repeatedly feeds batches to the model, computes loss, updates parameters, and tracks metrics. A well-designed loop includes a learning rate schedule that warms up then decays, gradient clipping to prevent instability, gradient accumulation to simulate large batches, and mixed precision to maximize throughput. This chapter builds each component from scratch.</p>
+
+<div class="prereq">
+  <strong>Prerequisites:</strong> Basic PyTorch (<code>nn.Module</code>, <code>torch.optim</code>, autograd); Understanding of backpropagation and gradient descent; Familiarity with the data pipeline (Chapter 01).
+</div>
+
+<h3>Files</h3>
+<table>
+  <tr><th>File</th><th>Purpose</th></tr>
+  <tr><td><code>training_loop.py</code></td><td>Core implementation: scheduler, clipper, metrics, training step</td></tr>
+  <tr><td><code>exercise.py</code></td><td>Fill-in-the-blank exercises to reinforce understanding</td></tr>
+  <tr><td><code>solution.py</code></td><td>Reference solutions for the exercises</td></tr>
+  <tr><td><code>tests.py</code></td><td>pytest tests for correctness</td></tr>
+</table>
+
+<h2 id="components">Training Loop Components</h2>
+<p>A training step has four stages:</p>
+
+<div class="diagram-container">
+  <svg viewBox="0 0 700 140" xmlns="http://www.w3.org/2000/svg" width="700">
+    <defs>
+      <marker id="arr3" markerWidth="10" markerHeight="7" refX="10" refY="3.5" orient="auto">
+        <polygon points="0 0, 10 3.5, 0 7" fill="#60a5fa"/>
+      </marker>
+    </defs>
+    <rect x="10" y="40" width="130" height="60" rx="8" fill="#1e2235" stroke="#60a5fa" stroke-width="1.5"/>
+    <text x="75" y="65" text-anchor="middle" fill="#60a5fa" font-size="13" font-weight="bold" font-family="sans-serif">1. Forward</text>
+    <text x="75" y="85" text-anchor="middle" fill="#94a3b8" font-size="11" font-family="monospace">logits = model(x)</text>
+
+    <line x1="140" y1="70" x2="170" y2="70" stroke="#60a5fa" stroke-width="2" marker-end="url(#arr3)"/>
+
+    <rect x="170" y="40" width="130" height="60" rx="8" fill="#1e2235" stroke="#a78bfa" stroke-width="1.5"/>
+    <text x="235" y="65" text-anchor="middle" fill="#a78bfa" font-size="13" font-weight="bold" font-family="sans-serif">2. Loss</text>
+    <text x="235" y="85" text-anchor="middle" fill="#94a3b8" font-size="11" font-family="monospace">CE(logits, labels)</text>
+
+    <line x1="300" y1="70" x2="330" y2="70" stroke="#60a5fa" stroke-width="2" marker-end="url(#arr3)"/>
+
+    <rect x="330" y="40" width="130" height="60" rx="8" fill="#1e2235" stroke="#34d399" stroke-width="1.5"/>
+    <text x="395" y="65" text-anchor="middle" fill="#34d399" font-size="13" font-weight="bold" font-family="sans-serif">3. Backward</text>
+    <text x="395" y="85" text-anchor="middle" fill="#94a3b8" font-size="11" font-family="monospace">loss.backward()</text>
+
+    <line x1="460" y1="70" x2="490" y2="70" stroke="#60a5fa" stroke-width="2" marker-end="url(#arr3)"/>
+
+    <rect x="490" y="20" width="200" height="100" rx="8" fill="#1e2235" stroke="#f78c6c" stroke-width="1.5"/>
+    <text x="590" y="45" text-anchor="middle" fill="#f78c6c" font-size="13" font-weight="bold" font-family="sans-serif">4. Update</text>
+    <text x="590" y="65" text-anchor="middle" fill="#94a3b8" font-size="11" font-family="sans-serif">a. Clip gradients</text>
+    <text x="590" y="82" text-anchor="middle" fill="#94a3b8" font-size="11" font-family="sans-serif">b. optimizer.step()</text>
+    <text x="590" y="99" text-anchor="middle" fill="#94a3b8" font-size="11" font-family="sans-serif">c. scheduler.step()</text>
+    <text x="590" y="116" text-anchor="middle" fill="#94a3b8" font-size="11" font-family="sans-serif">d. zero_grad()</text>
+  </svg>
+</div>
+
+<p>Each stage has subtleties that matter at scale.</p>
+
+<h2 id="cosine-lr">Cosine LR with Warmup</h2>
+<p>The learning rate is arguably the most important hyperparameter. Too high and training diverges; too low and training stalls. The standard schedule for LLM pretraining is <strong>linear warmup followed by cosine decay</strong>.</p>
+
+<h3>Why warmup?</h3>
+<p>At the start of training, the model's parameters are random. Large gradients in early steps can push the model into a bad region of the loss landscape that it cannot escape. Warmup starts with a tiny learning rate and linearly increases it over the first N steps, allowing the optimizer to find a stable direction before committing to large updates.</p>
+
+<div class="diagram-container">
+  <svg viewBox="0 0 600 220" xmlns="http://www.w3.org/2000/svg" width="600">
+    <text x="300" y="20" text-anchor="middle" fill="#e2e8f0" font-size="15" font-weight="bold" font-family="sans-serif">Learning Rate Schedule: Warmup + Cosine Decay</text>
+    <!-- Axes -->
+    <line x1="60" y1="180" x2="560" y2="180" stroke="#546e7a" stroke-width="1.5"/>
+    <line x1="60" y1="180" x2="60" y2="40" stroke="#546e7a" stroke-width="1.5"/>
+    <!-- Y axis label -->
+    <text x="25" y="110" text-anchor="middle" fill="#94a3b8" font-size="12" font-family="sans-serif" transform="rotate(-90 25 110)">Learning Rate</text>
+    <!-- X axis label -->
+    <text x="310" y="210" text-anchor="middle" fill="#94a3b8" font-size="12" font-family="sans-serif">Training Steps</text>
+    <!-- Grid lines -->
+    <line x1="60" y1="80" x2="560" y2="80" stroke="#2d3148" stroke-width="0.5" stroke-dasharray="4"/>
+    <line x1="60" y1="130" x2="560" y2="130" stroke="#2d3148" stroke-width="0.5" stroke-dasharray="4"/>
+    <!-- LR curve -->
+    <path d="M 60 180 L 120 130 L 140 80 Q 200 45 310 50 Q 420 60 500 120 Q 540 150 560 175" fill="none" stroke="#60a5fa" stroke-width="3"/>
+    <!-- Warmup region -->
+    <rect x="60" y="40" width="80" height="140" fill="rgba(167,139,250,0.08)" rx="4"/>
+    <text x="100" y="55" text-anchor="middle" fill="#a78bfa" font-size="11" font-family="sans-serif">Warmup</text>
+    <!-- Cosine region label -->
+    <text x="350" y="55" text-anchor="middle" fill="#60a5fa" font-size="11" font-family="sans-serif">Cosine Decay</text>
+    <!-- Min LR line -->
+    <line x1="60" y1="175" x2="560" y2="175" stroke="#f78c6c" stroke-width="1" stroke-dasharray="4"/>
+    <text x="570" y="178" fill="#f78c6c" font-size="10" font-family="sans-serif">min_lr</text>
+    <!-- Peak LR -->
+    <text x="55" y="80" text-anchor="end" fill="#94a3b8" font-size="10" font-family="sans-serif">peak</text>
+    <!-- Step labels -->
+    <text x="100" y="195" text-anchor="middle" fill="#94a3b8" font-size="10" font-family="sans-serif">0</text>
+    <text x="310" y="195" text-anchor="middle" fill="#94a3b8" font-size="10" font-family="sans-serif">50%</text>
+    <text x="560" y="195" text-anchor="middle" fill="#94a3b8" font-size="10" font-family="sans-serif">100%</text>
+  </svg>
+</div>
+
+<h3>Cosine vs. linear decay</h3>
+<p>After warmup, the learning rate decays. Two common strategies:</p>
+<ul>
+  <li><strong>Linear decay</strong>: LR decreases linearly from peak to zero. Simple but can decay too aggressively early on.</li>
+  <li><strong>Cosine decay</strong>: LR follows a cosine curve, decaying slowly at first and faster later. This tends to give better final performance because the model spends more time at moderate learning rates where it can refine its representations.</li>
+</ul>
+<p>The formula:</p>
+<pre><code>scale = min_lr_ratio + <span class="num">0.5</span> * (<span class="num">1</span> - min_lr_ratio) * (<span class="num">1</span> + cos(pi * progress))</code></pre>
+
+<p>Where <code>progress</code> goes from 0 (start of decay) to 1 (end of training). The <code>min_lr_ratio</code> (typically 0.1) prevents the LR from reaching exactly zero, which helps with fine-tuning later.</p>
+
+<pre><code><span class="kw">class</span> <span class="fn">CosineLRScheduler</span>:
+    <span class="kw">def</span> <span class="fn">get_lr_scale</span>(<span class="dec">self</span>, step):
+        <span class="kw">if</span> step < <span class="dec">self</span>.warmup_steps:
+            <span class="kw">return</span> step / <span class="fn">max</span>(<span class="num">1</span>, <span class="dec">self</span>.warmup_steps)
+
+        progress = (step - <span class="dec">self</span>.warmup_steps) / <span class="fn">max</span>(<span class="num">1</span>, <span class="dec">self</span>.total_steps - <span class="dec">self</span>.warmup_steps)
+        <span class="kw">return</span> <span class="dec">self</span>.min_lr_ratio + <span class="num">0.5</span> * (<span class="num">1.0</span> - <span class="dec">self</span>.min_lr_ratio) * (<span class="num">1.0</span> + math.cos(math.pi * progress))</code></pre>
+
+<h3>Practical values</h3>
+<ul>
+  <li>Warmup steps: typically 1-5% of total steps</li>
+  <li>Peak LR: 3e-4 is a common default for models with 100M-1B parameters</li>
+  <li>min_lr_ratio: 0.1 (LR decays to 10% of peak)</li>
+</ul>
+
+<h2 id="grad-clip">Gradient Clipping</h2>
+<p>During training, gradients occasionally spike due to outlier batches or numerical instability. If the gradient norm becomes very large, the parameter update can be catastrophic -- the model jumps to a completely different region of the loss landscape and training collapses.</p>
+
+<h3>How it works</h3>
+<p>Gradient clipping rescales the gradients when their global norm exceeds a threshold:</p>
+<pre><code><span class="kw">if</span> ||g|| > max_norm:
+    g = g * (max_norm / ||g||)</code></pre>
+<p>This preserves the direction of the gradient but limits its magnitude. The <code>max_norm</code> is typically 1.0.</p>
+
+<h3>Norm vs. value clipping</h3>
+<ul>
+  <li><strong>Norm clipping</strong> (what we use): Clips based on the L2 norm of all gradients combined. Preserves the relative magnitudes of different parameter gradients.</li>
+  <li><strong>Value clipping</strong>: Clips each gradient element independently. Can distort the gradient direction. Rarely used in modern training.</li>
+</ul>
+
+<pre><code><span class="kw">class</span> <span class="fn">GradientClipper</span>:
+    <span class="kw">def</span> <span class="fn">clip</span>(<span class="dec">self</span>, model):
+        total_norm = torch.nn.utils.clip_grad_norm_(
+            model.parameters(), <span class="dec">self</span>.max_norm, norm_type=<span class="dec">self</span>.norm_type
+        )
+        <span class="kw">return</span> total_norm.item()</code></pre>
+
+<p>The returned norm is useful for monitoring. If it is consistently close to <code>max_norm</code>, the model is experiencing instability and you may need to lower the learning rate.</p>
+
+<h2 id="grad-accum">Gradient Accumulation</h2>
+<p>Large batch sizes stabilize training and improve throughput, but they require more GPU memory. Gradient accumulation simulates a larger batch by accumulating gradients over multiple forward/backward passes before updating the parameters.</p>
+
+<pre><code>Effective batch size = micro_batch_size * gradient_accumulation_steps
+
+Example:
+  micro_batch_size = <span class="num">4</span>
+  gradient_accumulation_steps = <span class="num">8</span>
+  Effective batch size = <span class="num">32</span></code></pre>
+
+<p>Each micro-batch does a forward and backward pass, adding to the accumulated gradients. Only after every N micro-batches does the optimizer step. The loss must be divided by the accumulation steps so the accumulated gradients have the correct magnitude.</p>
+
+<pre><code>loss = loss / gradient_accumulation_steps
+loss.backward()
+
+<span class="kw">if</span> (step + <span class="num">1</span>) % gradient_accumulation_steps == <span class="num">0</span>:
+    clipper.clip(model)
+    optimizer.step()
+    optimizer.zero_grad()</code></pre>
+
+<h2 id="mixed-precision">Mixed Precision Training</h2>
+<p>Modern GPUs can compute in both FP32 (32-bit float) and FP16/BF16 (16-bit float). Mixed precision uses 16-bit for the forward and backward passes (faster, less memory) while keeping a FP32 copy of the parameters for the update (more numerically stable).</p>
+
+<h3>FP16 vs. BF16</h3>
+<ul>
+  <li><strong>FP16</strong>: Has a smaller range, so gradients can underflow to zero. Requires loss scaling to prevent this.</li>
+  <li><strong>BF16</strong>: Has the same range as FP32 but less precision. Does not need loss scaling. Preferred on modern hardware (A100, H100).</li>
+</ul>
+
+<h3>GradScaler</h3>
+<p>The <code>GradScaler</code> is needed for FP16 training. It multiplies the loss by a large factor before the backward pass (scaling up gradients to prevent underflow), then divides the gradients back before the optimizer step.</p>
+
+<pre><code>scaler = torch.amp.GradScaler()
+
+<span class="kw">with</span> torch.amp.autocast(device_type=<span class="str">"cuda"</span>):
+    logits = model(input_ids)
+    loss = cross_entropy(logits, labels)
+
+scaler.scale(loss).backward()
+scaler.unscale_(optimizer)
+torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm)
+scaler.step(optimizer)
+scaler.update()</code></pre>
+
+<p>The <code>unscale_</code> call must happen before gradient clipping, because clipping operates on the unscaled gradients.</p>
+
+<h2 id="weight-decay">Weight Decay</h2>
+<p>Weight decay penalizes large weights by subtracting a fraction of the weight from the gradient at each step. This acts as a regularizer, preventing the model from relying too heavily on any single feature.</p>
+
+<h3>Decoupled vs. L2 regularization</h3>
+<ul>
+  <li><strong>L2 regularization</strong>: Adds <code>0.5 * lambda * ||w||^2</code> to the loss. The gradient of this term is <code>lambda * w</code>, which is added to the gradient of the loss. This interacts with the learning rate -- changing LR also changes the effective regularization strength.</li>
+  <li><strong>Decoupled weight decay</strong> (AdamW): Subtracts <code>lambda * w</code> directly from the parameters after the optimizer step. This decouples the regularization from the learning rate, making hyperparameter tuning easier.</li>
+</ul>
+<p>AdamW is the standard optimizer for LLM pretraining.</p>
+
+<h3>Which parameters get weight decay?</h3>
+<p>A common practice: apply weight decay to weight matrices (dim >= 2) but not to biases and normalization parameters (dim &lt; 2). This is because biases and norms are already constrained by their role in the network, and decaying them can hurt performance.</p>
+
+<pre><code>decay_params = [p <span class="kw">for</span> n, p <span class="kw">in</span> model.named_parameters() <span class="kw">if</span> p.dim() >= <span class="num">2</span>]
+no_decay_params = [p <span class="kw">for</span> n, p <span class="kw">in</span> model.named_parameters() <span class="kw">if</span> p.dim() < <span class="num">2</span>]
+
+optimizer = AdamW([
+    {<span class="str">"params"</span>: decay_params, <span class="str">"weight_decay"</span>: <span class="num">0.1</span>},
+    {<span class="str">"params"</span>: no_decay_params, <span class="str">"weight_decay"</span>: <span class="num">0.0</span>},
+], lr=<span class="num">3e-4</span>, betas=(<span class="num">0.9</span>, <span class="num">0.95</span>))</code></pre>
+
+<h2 id="walkthrough">Code Walkthrough</h2>
+
+<h3>Step 1: CosineLRScheduler</h3>
+<pre><code>scheduler = CosineLRScheduler(optimizer, warmup_steps=<span class="num">100</span>, total_steps=<span class="num">10000</span>)</code></pre>
+<p>Creates a scheduler that linearly warms up over 100 steps, then decays with a cosine curve over the remaining 9900 steps. The <code>get_lr_scale</code> method returns a multiplier between 0 and 1 that is applied to the base learning rate.</p>
+
+<h3>Step 2: GradientClipper</h3>
+<pre><code>clipper = GradientClipper(max_norm=<span class="num">1.0</span>)</code></pre>
+<p>Wraps <code>torch.nn.utils.clip_grad_norm_</code> in a simple interface. The <code>clip</code> method returns the gradient norm before clipping, which is useful for logging.</p>
+
+<h3>Step 3: TrainingMetrics</h3>
+<pre><code>metrics = TrainingMetrics()
+metrics.update(loss=<span class="num">2.5</span>, grad_norm=<span class="num">1.0</span>, lr=<span class="num">1e-3</span>)
+<span class="fn">print</span>(metrics.summary())</code></pre>
+<p>Tracks loss, gradient norms, and learning rates over time. The <code>summary</code> method returns a dict with running averages and elapsed time.</p>
+
+<h3>Step 4: create_training_components</h3>
+<pre><code>components = create_training_components(model, learning_rate=<span class="num">3e-4</span>, total_steps=<span class="num">10000</span>)</code></pre>
+<p>Creates all training components in one call. Returns a dict with <code>optimizer</code>, <code>scheduler</code>, <code>clipper</code>, and <code>metrics</code>. Handles the weight decay parameter grouping automatically.</p>
+
+<h3>Step 5: training_step</h3>
+<pre><code>result = training_step(
+    model, batch, optimizer, scheduler, clipper, step=<span class="num">0</span>,
+    gradient_accumulation_steps=<span class="num">1</span>,
+)</code></pre>
+<p>Executes a single training step: forward pass, loss computation, backward pass, gradient clipping, optimizer step, and LR update. Supports gradient accumulation and optional mixed precision via <code>GradScaler</code>.</p>
+
+<h2 id="putting-together">Putting It All Together</h2>
+<p>A typical training loop:</p>
+
+<pre><code>components = create_training_components(model, total_steps=<span class="fn">len</span>(dataloader) * num_epochs)
+optimizer = components[<span class="str">"optimizer"</span>]
+scheduler = components[<span class="str">"scheduler"</span>]
+clipper = components[<span class="str">"clipper"</span>]
+metrics = components[<span class="str">"metrics"</span>]
+
+<span class="kw">for</span> epoch <span class="kw">in</span> <span class="fn">range</span>(num_epochs):
+    <span class="kw">for</span> step, batch <span class="kw">in</span> <span class="fn">enumerate</span>(dataloader):
+        result = training_step(model, batch, optimizer, scheduler, clipper, step)
+        metrics.update(result[<span class="str">"loss"</span>], result[<span class="str">"grad_norm"</span>], result[<span class="str">"lr"</span>])
+
+        <span class="kw">if</span> step % <span class="num">100</span> == <span class="num">0</span>:
+            <span class="fn">print</span>(metrics.summary())
+            metrics.reset()</code></pre>
+
+<h2 id="exercises">Exercises</h2>
+<p>Open <code>exercise.py</code> and implement:</p>
+<ol>
+  <li><strong><code>CosineLRScheduler.get_lr_scale</code></strong>: Implement the warmup + cosine decay formula.</li>
+  <li><strong><code>GradientClipper.clip</code></strong>: Implement gradient clipping using <code>clip_grad_norm_</code>.</li>
+  <li><strong><code>training_step</code></strong>: Implement the full forward/backward/step logic.</li>
+</ol>
+
+<h2 id="tests">Running Tests</h2>
+<pre><code>pytest tests.py -v</code></pre>
+
+<h2 id="summary">Summary</h2>
+<table class="summary-table">
+  <tr><th>Concept</th><th>What it solves</th></tr>
+  <tr><td>Cosine LR + warmup</td><td>Stable start, gradual decay for better convergence</td></tr>
+  <tr><td>Gradient clipping</td><td>Prevents catastrophic updates from gradient spikes</td></tr>
+  <tr><td>Gradient accumulation</td><td>Simulates large batches with limited GPU memory</td></tr>
+  <tr><td>Mixed precision</td><td>Faster training, less memory, same quality</td></tr>
+  <tr><td>AdamW weight decay</td><td>Regularization decoupled from learning rate</td></tr>
+  <tr><td>TrainingMetrics</td><td>Monitors loss, grad norms, LR for debugging</td></tr>
+</table>
+
+<h2 id="next">Next Steps</h2>
+<ul>
+  <li><strong>Chapter 04 (Distributed Training)</strong>: Scaling to multiple GPUs and machines.</li>
+  <li><strong>Chapter 05 (Scaling Laws)</strong>: How model size, data, and compute relate.</li>
+</ul>
+
+</main>
+</body>
+</html>

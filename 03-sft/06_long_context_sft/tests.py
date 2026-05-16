@@ -26,10 +26,14 @@ def test_position_interpolation():
 
 
 def test_ntk_scaling():
-    ntk = NTKAwareScaling(original_max_seq_len=2048, target_max_seq_len=8192)
+    ntk = NTKAwareScaling(original_max_seq_len=2048, target_max_seq_len=8192, d_model=64)
     inv_freq = ntk.get_scaled_inv_freq(d_model=64, device=torch.device("cpu"))
     assert inv_freq.shape == (32,)
     assert (inv_freq > 0).all()
+    # Verify NTK-aware scaling: scaled_base should be base * scale^(d/(d-2))
+    import math
+    expected_base = 10000.0 * (4.0 ** (64 / 62))
+    assert abs(ntk.scaled_base - expected_base) < 1.0
 
 
 def test_long_context_dataset():

@@ -1,0 +1,532 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Process Reward Model (PRM) - LLM From Scratch</title>
+<style>
+:root {
+  --bg: #0f1117;
+  --bg-card: #161b22;
+  --bg-sidebar: #0d1117;
+  --bg-code: #1a1e28;
+  --text: #e6edf3;
+  --text-muted: #8b949e;
+  --text-dim: #6e7681;
+  --accent: #58a6ff;
+  --accent-green: #3fb950;
+  --accent-orange: #d29922;
+  --accent-red: #f85149;
+  --accent-purple: #bc8cff;
+  --border: #21262d;
+  --border-light: #30363d;
+  --sidebar-w: 280px;
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  line-height: 1.7;
+  font-size: 15px;
+}
+
+.layout {
+  display: flex;
+  min-height: 100vh;
+}
+
+/* Sidebar */
+.sidebar {
+  width: var(--sidebar-w);
+  background: var(--bg-sidebar);
+  border-right: 1px solid var(--border);
+  position: fixed;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  overflow-y: auto;
+  z-index: 100;
+  padding: 20px 0;
+}
+
+.sidebar-header {
+  padding: 10px 20px 20px;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 10px;
+}
+
+.sidebar-header .module-tag {
+  display: inline-block;
+  background: var(--accent);
+  color: #000;
+  font-size: 10px;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 10px;
+  margin-bottom: 8px;
+  letter-spacing: 0.5px;
+}
+
+.sidebar-header h2 {
+  font-size: 16px;
+  color: var(--text);
+  font-weight: 600;
+  line-height: 1.3;
+}
+
+.sidebar-header .chapter-num {
+  color: var(--accent);
+  font-size: 12px;
+  font-weight: 500;
+  margin-bottom: 4px;
+}
+
+.toc-item {
+  display: block;
+  padding: 6px 20px;
+  color: var(--text-muted);
+  text-decoration: none;
+  font-size: 13px;
+  transition: all 0.15s;
+  border-left: 3px solid transparent;
+}
+
+.toc-item:hover {
+  color: var(--text);
+  background: rgba(88, 166, 255, 0.06);
+  border-left-color: var(--accent);
+}
+
+.toc-sub {
+  padding-left: 36px;
+  font-size: 12px;
+}
+
+/* Main content */
+.main {
+  margin-left: var(--sidebar-w);
+  flex: 1;
+  padding: 40px 60px;
+  max-width: 900px;
+}
+
+.main h2 {
+  font-size: 24px;
+  color: var(--text);
+  margin-top: 40px;
+  margin-bottom: 16px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--border);
+  scroll-margin-top: 20px;
+}
+
+.main h3 {
+  font-size: 18px;
+  color: var(--accent);
+  margin-top: 30px;
+  margin-bottom: 12px;
+  scroll-margin-top: 20px;
+}
+
+.main p {
+  margin-bottom: 14px;
+  color: var(--text);
+}
+
+.main blockquote {
+  border-left: 4px solid var(--accent);
+  padding: 12px 20px;
+  margin: 16px 0;
+  background: rgba(88, 166, 255, 0.06);
+  border-radius: 0 6px 6px 0;
+  color: var(--text-muted);
+  font-size: 14px;
+}
+
+.main hr {
+  border: none;
+  border-top: 1px solid var(--border);
+  margin: 30px 0;
+}
+
+.main a {
+  color: var(--accent);
+  text-decoration: none;
+}
+
+.main a:hover {
+  text-decoration: underline;
+}
+
+.main strong {
+  color: var(--text);
+  font-weight: 600;
+}
+
+.main code {
+  font-family: 'SF Mono', 'Fira Code', 'Cascadia Code', 'Consolas', monospace;
+  background: var(--bg-code);
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 13px;
+  color: var(--accent-orange);
+}
+
+.main pre {
+  background: var(--bg-code);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 16px 20px;
+  overflow-x: auto;
+  margin: 16px 0;
+  line-height: 1.5;
+}
+
+.main pre code {
+  background: none;
+  padding: 0;
+  color: var(--text);
+  font-size: 13px;
+  display: block;
+  white-space: pre;
+}
+
+/* Tables */
+.table-wrapper {
+  overflow-x: auto;
+  margin: 16px 0;
+}
+
+.main table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+
+.main table th {
+  background: var(--bg-code);
+  color: var(--accent);
+  text-align: left;
+  padding: 10px 14px;
+  border: 1px solid var(--border);
+  font-weight: 600;
+  font-size: 13px;
+}
+
+.main table td {
+  padding: 8px 14px;
+  border: 1px solid var(--border);
+  color: var(--text);
+}
+
+.main table tr:hover td {
+  background: rgba(88, 166, 255, 0.04);
+}
+
+/* SVG Diagrams */
+.diagram {
+  display: block;
+  max-width: 100%;
+  margin: 20px 0;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 15px;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  .sidebar {
+    display: none;
+  }
+  .main {
+    margin-left: 0;
+    padding: 20px;
+  }
+}
+
+/* Syntax highlighting hints */
+.main pre code .comment { color: #6a737d; }
+.main pre code .keyword { color: #ff7b72; }
+.main pre code .string { color: #a5d6ff; }
+.main pre code .number { color: #79c0ff; }
+</style>
+</head>
+<body>
+<div class="layout">
+  <nav class="sidebar">
+    <div class="sidebar-header">
+      <div class="module-tag">MODULE 04 - RL</div>
+      <div class="chapter-num">Chapter 06</div>
+      <h2>Process Reward Model (PRM)</h2>
+    </div>
+    <a href="#section-1" class="toc-item ">Prerequisites</a>
+<a href="#section-2" class="toc-item ">Files</a>
+<a href="#section-3" class="toc-item ">What is a Process Reward Model?</a>
+<a href="#section-4" class="toc-item toc-sub">Outcome vs Process Reward</a>
+<a href="#section-5" class="toc-item toc-sub">Why PRMs Matter</a>
+<a href="#section-6" class="toc-item ">Architecture</a>
+<a href="#section-7" class="toc-item toc-sub">ProcessRewardModel</a>
+<a href="#section-8" class="toc-item toc-sub">Step Boundaries</a>
+<a href="#section-9" class="toc-item toc-sub">StepwiseRewardLoss</a>
+<a href="#section-10" class="toc-item toc-sub">best_of_n_prm</a>
+<a href="#section-11" class="toc-item ">Code Walkthrough</a>
+<a href="#section-12" class="toc-item toc-sub">Step 1: ProcessRewardModel</a>
+<a href="#section-13" class="toc-item toc-sub">Step 2: StepwiseRewardDataset</a>
+<a href="#section-14" class="toc-item toc-sub">Step 3: StepwiseRewardLoss</a>
+<a href="#section-15" class="toc-item toc-sub">Step 4: best_of_n_prm</a>
+<a href="#section-16" class="toc-item ">PRM vs ORM Comparison</a>
+<a href="#section-17" class="toc-item ">Training Tips</a>
+<a href="#section-18" class="toc-item toc-sub">Hyperparameters</a>
+<a href="#section-19" class="toc-item toc-sub">Common Pitfalls</a>
+<a href="#section-20" class="toc-item ">How to Run</a>
+<a href="#section-21" class="toc-item toc-sub">Run Tests</a>
+<a href="#section-22" class="toc-item toc-sub">Run Exercises</a>
+<a href="#section-23" class="toc-item ">Exercises</a>
+<a href="#section-24" class="toc-item toc-sub">Exercise Order</a>
+<a href="#section-25" class="toc-item toc-sub">Tips</a>
+<a href="#section-26" class="toc-item ">Key Takeaways</a>
+<a href="#section-27" class="toc-item ">Further Reading</a>
+
+  </nav>
+  <main class="main">
+    
+<svg viewBox="0 0 700 200" xmlns="http://www.w3.org/2000/svg" class="diagram">
+  <defs>
+    <marker id="arrowhead-prm" markerWidth="10" markerHeight="7" refX="10" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#64b5f6"/>
+    </marker>
+  </defs>
+  <text x="350" y="20" text-anchor="middle" fill="#e0e0e0" font-size="14" font-weight="bold">Process Reward Model: Step-Level Scoring</text>
+  <rect x="30" y="40" width="120" height="50" rx="6" fill="#1a237e" stroke="#5c6bc0" stroke-width="1.5"/>
+  <text x="90" y="60" text-anchor="middle" fill="#e8eaf6" font-size="11" font-weight="bold">Transformer</text>
+  <text x="90" y="78" text-anchor="middle" fill="#9fa8da" font-size="10">Hidden States</text>
+  <line x1="150" y1="65" x2="200" y2="65" stroke="#64b5f6" stroke-width="2" marker-end="url(#arrowhead-prm)"/>
+  <rect x="200" y="35" width="260" height="65" rx="6" fill="#0d47a1" stroke="#42a5f5" stroke-width="1.5"/>
+  <text x="330" y="55" text-anchor="middle" fill="#e3f2fd" font-size="11" font-weight="bold">Step Boundary Extraction</text>
+  <text x="330" y="73" text-anchor="middle" fill="#90caf9" font-size="10">hidden_states[batch_idx, step_ends]</text>
+  <text x="330" y="90" text-anchor="middle" fill="#90caf9" font-size="10">Step 1 ends at pos 3, Step 2 at pos 7, ...</text>
+  <line x1="460" y1="65" x2="510" y2="65" stroke="#64b5f6" stroke-width="2" marker-end="url(#arrowhead-prm)"/>
+  <rect x="510" y="40" width="160" height="55" rx="6" fill="#004d40" stroke="#26a69a" stroke-width="1.5"/>
+  <text x="590" y="60" text-anchor="middle" fill="#e0f2f1" font-size="11" font-weight="bold">Linear Head</text>
+  <text x="590" y="78" text-anchor="middle" fill="#80cbc4" font-size="10">score per step (logit)</text>
+  <text x="590" y="90" text-anchor="middle" fill="#b2dfdb" font-size="10">sigmoid -> probability</text>
+  <rect x="30" y="120" width="640" height="70" rx="6" fill="#4a148c" stroke="#ab47bc" stroke-width="1.5"/>
+  <text x="350" y="143" text-anchor="middle" fill="#e1bee7" font-size="12" font-weight="bold">Best-of-N Selection (aggregation methods)</text>
+  <text x="120" y="165" text-anchor="middle" fill="#ce93d8" font-size="10">min: worst step</text>
+  <text x="260" y="165" text-anchor="middle" fill="#ce93d8" font-size="10">mean: avg step</text>
+  <text x="400" y="165" text-anchor="middle" fill="#ce93d8" font-size="10">sum: total score</text>
+  <text x="540" y="165" text-anchor="middle" fill="#ce93d8" font-size="10">product: P(all correct)</text>
+  <text x="350" y="182" text-anchor="middle" fill="#f3e5f5" font-size="10">Pick candidate with highest aggregated score</text>
+</svg>
+    <blockquote><p>**Module 04 -- Reinforcement Learning, Chapter 06**</p></blockquote>
+<p>Process Reward Models (PRMs) score each reasoning step independently, rather than only scoring the final answer. This gives more granular feedback for training reasoning models -- you can identify exactly which step went wrong, not just whether the final answer is correct.</p>
+<p>This chapter implements the core PRM components: the step-level scoring model, a dataset with per-step labels, a stepwise loss function, and a best-of-n selection procedure.</p>
+<hr>
+<h2 id="section-1">Prerequisites</h2>
+<p>- Reward model basics (Module 04, Chapter 01) - Transformer architecture (Module 01) - PyTorch nn.Module, autograd</p>
+<h2 id="section-2">Files</h2>
+<div class="table-wrapper"><table>
+<thead><tr>
+<th>File</th>
+<th>Purpose</th>
+</tr></thead>
+<tbody>
+<tr>
+<td>`process_reward_model.py`</td>
+<td>Core implementation: ProcessRewardModel, StepwiseRewardDataset, StepwiseRewardLoss, best_of_n_prm</td>
+</tr>
+<tr>
+<td>`exercise.py`</td>
+<td>Fill-in-the-blank exercises to reinforce understanding</td>
+</tr>
+<tr>
+<td>`solution.py`</td>
+<td>Reference solutions for the exercises</td>
+</tr>
+<tr>
+<td>`tests.py`</td>
+<td>pytest tests for correctness</td>
+</tr>
+</tbody></table></div>
+<hr>
+<h2 id="section-3">What is a Process Reward Model?</h2>
+<h3 id="section-4">Outcome vs Process Reward</h3>
+<p>Traditional reward models (Outcome Reward Models, ORMs) score only the final answer:</p>
+<pre><code>Question: What is 2 + 3 * 4?
+Response: "2 + 3 = 5, 5 * 4 = 20"
+ORM score: 0.1 (wrong answer, low score)</code></pre>
+<p>A Process Reward Model scores each step:</p>
+<pre><code>Question: What is 2 + 3 * 4?
+Step 1: "3 * 4 = 12"       -&gt; PRM score: 0.9 (correct)
+Step 2: "2 + 12 = 14"      -&gt; PRM score: 0.9 (correct)
+Step 3: "Answer is 14"      -&gt; PRM score: 0.9 (correct)</code></pre>
+<p>vs.</p>
+<pre><code>Step 1: "2 + 3 = 5"        -&gt; PRM score: 0.2 (incorrect order of operations)
+Step 2: "5 * 4 = 20"       -&gt; PRM score: 0.8 (arithmetic correct, but wrong inputs)
+Step 3: "Answer is 20"      -&gt; PRM score: 0.3 (wrong final answer)</code></pre>
+<p>The PRM pinpoints exactly where the reasoning went wrong.</p>
+<h3 id="section-5">Why PRMs Matter</h3>
+<p>1. <strong>Better feedback</strong>: Instead of a single "right/wrong" signal, the model gets feedback on each step. 2. <strong>Better search</strong>: When generating multiple reasoning paths, PRMs help select paths where ALL steps are correct, not just the final answer. 3. <strong>Less reward hacking</strong>: ORMs can be fooled by correct-looking but wrong reasoning that happens to reach the right answer. PRMs catch this.</p>
+<hr>
+<h2 id="section-6">Architecture</h2>
+<h3 id="section-7">ProcessRewardModel</h3>
+<pre><code class="language-python">class ProcessRewardModel(nn.Module):
+    def __init__(self, transformer):
+        self.transformer = transformer
+        self.step_head = nn.Linear(d_model, 1)
+
+    def forward(self, input_ids, step_boundaries):
+        hidden_states = self.transformer(input_ids)  # (batch, seq, d_model)
+        step_hidden = hidden_states[batch_indices, step_boundaries]  # (batch, num_steps, d_model)
+        step_logits = self.step_head(step_hidden).squeeze(-1)  # (batch, num_steps)
+        return step_logits</code></pre>
+<p>The model uses the hidden state at each step's boundary position. In autoregressive models, the last token of a step has attended to all tokens in that step, providing a complete representation.</p>
+<h3 id="section-8">Step Boundaries</h3>
+<p>Step boundaries are indices into the token sequence indicating where each step ends:</p>
+<pre><code>Tokens:    [a, b, c, d, e, f, g, h, i, j, k]
+Step 1:    [a, b, c]           -&gt; boundary = 2
+Step 2:    [d, e, f, g]        -&gt; boundary = 6
+Step 3:    [h, i, j, k]        -&gt; boundary = 10
+step_boundaries = [2, 6, 10]</code></pre>
+<h3 id="section-9">StepwiseRewardLoss</h3>
+<p>Standard binary cross-entropy applied to each step independently:</p>
+<pre><code class="language-python">loss = BCE_with_logits(step_scores, step_labels)  # per step
+loss = loss.mean()  # average over all steps</code></pre>
+<h3 id="section-10">best_of_n_prm</h3>
+<p>Given N candidate responses, aggregate step scores and pick the best:</p>
+<pre><code class="language-python"># Four aggregation methods:
+'min'     -&gt; worst-case step score (conservative)
+'sum'     -&gt; total score across steps
+'mean'    -&gt; average step score (length-normalized)
+'product' -&gt; probability all steps are correct (assumes independence)</code></pre>
+<hr>
+<h2 id="section-11">Code Walkthrough</h2>
+<h3 id="section-12">Step 1: ProcessRewardModel</h3>
+<p>The PRM wraps a transformer and adds a per-step linear head:</p>
+<pre><code class="language-python"># Hidden states at step boundaries capture full context
+step_hidden = hidden_states[batch_indices, step_boundaries]
+# Linear head maps each step to a scalar logit
+step_logits = self.step_head(step_hidden).squeeze(-1)</code></pre>
+<h3 id="section-13">Step 2: StepwiseRewardDataset</h3>
+<p>Simple dataset that stores pre-tokenized data with per-step labels:</p>
+<pre><code class="language-python">{
+    "input_ids": [1, 2, 3, 4, 5, 6, 7, 8],
+    "step_boundaries": [3, 7],      # 2 steps
+    "step_labels": [1, 0],          # step 1 correct, step 2 wrong
+}</code></pre>
+<h3 id="section-14">Step 3: StepwiseRewardLoss</h3>
+<p>BCE with logits, with optional masking for variable-length step counts:</p>
+<pre><code class="language-python">per_step_loss = F.binary_cross_entropy_with_logits(scores, labels, reduction='none')
+if mask is not None:
+    loss = (per_step_loss * mask).sum() / mask.sum()
+else:
+    loss = per_step_loss.mean()</code></pre>
+<h3 id="section-15">Step 4: best_of_n_prm</h3>
+<p>Aggregate step scores to select the best candidate:</p>
+<pre><code class="language-python"># Conservative: pick the response where the worst step is best
+agg_scores = step_scores.min(dim=1).values
+best_idx = agg_scores.argmax()</code></pre>
+<hr>
+<h2 id="section-16">PRM vs ORM Comparison</h2>
+<div class="table-wrapper"><table>
+<thead><tr>
+<th>Aspect</th>
+<th>ORM (Outcome)</th>
+<th>PRM (Process)</th>
+</tr></thead>
+<tbody>
+<tr>
+<td>Granularity</td>
+<td>One score per response</td>
+<td>One score per step</td>
+</tr>
+<tr>
+<td>Feedback</td>
+<td>"Final answer right/wrong"</td>
+<td>"Step 2 was wrong"</td>
+</tr>
+<tr>
+<td>Reward hacking</td>
+<td>Easier to fool</td>
+<td>Harder to fool</td>
+</tr>
+<tr>
+<td>Labeling cost</td>
+<td>Low (check final answer)</td>
+<td>High (label each step)</td>
+</tr>
+<tr>
+<td>Search quality</td>
+<td>May select lucky wrong paths</td>
+<td>Selects consistently correct paths</td>
+</tr>
+<tr>
+<td>Training data</td>
+<td>Easy to collect</td>
+<td>Requires step-level annotations</td>
+</tr>
+</tbody></table></div>
+<hr>
+<h2 id="section-17">Training Tips</h2>
+<h3 id="section-18">Hyperparameters</h3>
+<div class="table-wrapper"><table>
+<thead><tr>
+<th>Parameter</th>
+<th>Typical Range</th>
+<th>Description</th>
+</tr></thead>
+<tbody>
+<tr>
+<td>`lr`</td>
+<td>1e-6 - 1e-5</td>
+<td>Learning rate</td>
+</tr>
+<tr>
+<td>`batch_size`</td>
+<td>16 - 64</td>
+<td>Batch size</td>
+</tr>
+<tr>
+<td>`aggregation`</td>
+<td>'min'</td>
+<td>Best-of-n aggregation method</td>
+</tr>
+</tbody></table></div>
+<h3 id="section-19">Common Pitfalls</h3>
+<p>1. <strong>Step boundary errors</strong>: If boundaries don't align with actual step transitions, the PRM learns garbage. Ensure boundaries are at step ends, not middles.</p>
+<p>2. <strong>Class imbalance</strong>: In many datasets, most steps are correct. Consider oversampling incorrect steps or using weighted loss.</p>
+<p>3. <strong>Product aggregation with logits</strong>: The product aggregation assumes scores are probabilities. Apply sigmoid first if your PRM outputs logits.</p>
+<p>4. <strong>Variable step counts</strong>: Different candidates may have different numbers of steps. Use step_mask in the loss and best_of_n functions.</p>
+<hr>
+<h2 id="section-20">How to Run</h2>
+<h3 id="section-21">Run Tests</h3>
+<pre><code class="language-bash">cd /path/to/llm-from-scratch
+pytest 04-rl/06_prm/tests.py -v</code></pre>
+<h3 id="section-22">Run Exercises</h3>
+<p>Open <code>exercise.py</code> and fill in the <code>TODO</code> sections. Then verify:</p>
+<pre><code class="language-bash">pytest 04-rl/06_prm/tests.py -v</code></pre>
+<hr>
+<h2 id="section-23">Exercises</h2>
+<p>Open <code>exercise.py</code> to practice implementing PRM components yourself.</p>
+<h3 id="section-24">Exercise Order</h3>
+<p>1. <strong><code>ProcessRewardModelExercise.forward</code></strong> -- Extract hidden states at step boundaries and score each step 2. <strong><code>StepwiseRewardDatasetExercise</code></strong> -- Store and retrieve step-level training data 3. <strong><code>StepwiseRewardLossExercise.forward</code></strong> -- Compute BCE loss over step scores 4. <strong><code>best_of_n_prm_exercise</code></strong> -- Aggregate step scores to select the best candidate</p>
+<h3 id="section-25">Tips</h3>
+<p>- For <code>ProcessRewardModel.forward</code>, use advanced indexing: <code>hidden_states[batch_indices, step_boundaries]</code>. - For the loss, use <code>F.binary_cross_entropy_with_logits</code> with <code>reduction='none'</code> to get per-step losses. - For <code>best_of_n_prm</code>, handle the mask carefully: for 'min', replace masked positions with +inf; for 'product', replace with 1.0.</p>
+<hr>
+<h2 id="section-26">Key Takeaways</h2>
+<p>1. <strong>PRMs score each step, not just the final answer.</strong> This provides much richer training signal for reasoning models. Instead of knowing "the answer is wrong," you know "step 3 is where it went wrong."</p>
+<p>2. <strong>Step boundaries are the key design choice.</strong> The hidden state at each step's end position captures the full reasoning context up to that point. Getting boundaries right is critical.</p>
+<p>3. <strong>BCE loss treats each step independently.</strong> Each step is a binary classification: correct or incorrect. The loss averages over all steps.</p>
+<p>4. <strong>Aggregation method matters for best-of-n.</strong> 'min' is conservative (all steps must be good), 'product' assumes independence (probability all steps are correct), 'sum' and 'mean' are more lenient.</p>
+<p>5. <strong>PRMs are expensive to train but valuable.</strong> Labeling each step requires expert annotation. But the resulting model provides much better signal for training reasoning models than ORMs.</p>
+<hr>
+<h2 id="section-27">Further Reading</h2>
+<p>- <a href="https://arxiv.org/abs/2305.20050">Let's Verify Step by Step (Lightman et al., 2023)</a> -- The paper that introduced PRMs for mathematical reasoning - <a href="https://arxiv.org/abs/2110.14168">Training Verifiers to Solve Math Word Problems (Cobbe et al., 2021)</a> -- Introduced outcome reward models and best-of-n verification - <a href="https://arxiv.org/abs/2211.14275">Solving Math Word Problems with Process- and Outcome-Based Feedback (Uesato et al., 2022)</a> -- Comparison of process vs outcome reward models</p>
+  </main>
+</div>
+</body>
+</html>

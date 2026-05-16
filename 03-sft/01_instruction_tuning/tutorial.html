@@ -1,0 +1,514 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Instruction Tuning - 指令微调</title>
+<style>
+:root {
+  --sidebar-width: 280px;
+  --bg: #0f1117;
+  --bg-card: #1a1d27;
+  --bg-code: #12141c;
+  --text: #e0e0e6;
+  --text-muted: #8b8fa3;
+  --accent: #6c8cff;
+  --accent-dim: #3a4a7a;
+  --green: #4ade80;
+  --orange: #fb923c;
+  --red: #f87171;
+  --purple: #a78bfa;
+  --border: #2a2d3a;
+  --sidebar-bg: #0b0d14;
+}
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  line-height: 1.75;
+  display: flex;
+  min-height: 100vh;
+}
+/* Sidebar */
+.sidebar {
+  width: var(--sidebar-width);
+  background: var(--sidebar-bg);
+  border-right: 1px solid var(--border);
+  padding: 24px 0;
+  position: fixed;
+  top: 0; left: 0; bottom: 0;
+  overflow-y: auto;
+  z-index: 10;
+}
+.sidebar h2 {
+  font-size: 14px;
+  text-transform: uppercase;
+  letter-spacing: 1.5px;
+  color: var(--accent);
+  padding: 0 20px 12px;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 12px;
+}
+.sidebar ul { list-style: none; }
+.sidebar li a {
+  display: block;
+  padding: 7px 20px;
+  color: var(--text-muted);
+  text-decoration: none;
+  font-size: 13.5px;
+  transition: all 0.2s;
+  border-left: 2px solid transparent;
+}
+.sidebar li a:hover, .sidebar li a.active {
+  color: var(--text);
+  background: rgba(108,140,255,0.06);
+  border-left-color: var(--accent);
+}
+.sidebar li.section-label {
+  padding: 14px 20px 4px;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: var(--accent);
+  font-weight: 600;
+}
+/* Main content */
+.main {
+  margin-left: var(--sidebar-width);
+  flex: 1;
+  max-width: 880px;
+  padding: 48px 56px 80px;
+}
+h1 {
+  font-size: 36px;
+  font-weight: 700;
+  color: #fff;
+  margin-bottom: 8px;
+  line-height: 1.2;
+}
+.subtitle {
+  color: var(--accent);
+  font-size: 14px;
+  letter-spacing: 0.5px;
+  margin-bottom: 40px;
+}
+h2 {
+  font-size: 24px;
+  font-weight: 600;
+  color: #fff;
+  margin-top: 56px;
+  margin-bottom: 20px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--border);
+}
+h3 {
+  font-size: 18px;
+  font-weight: 600;
+  color: #fff;
+  margin-top: 36px;
+  margin-bottom: 14px;
+}
+h4 {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--accent);
+  margin-top: 28px;
+  margin-bottom: 10px;
+}
+p { margin-bottom: 16px; }
+strong { color: #fff; }
+a { color: var(--accent); text-decoration: none; }
+a:hover { text-decoration: underline; }
+ul, ol { margin: 0 0 16px 24px; }
+li { margin-bottom: 6px; }
+hr { border: none; border-top: 1px solid var(--border); margin: 40px 0; }
+/* Code blocks */
+pre {
+  background: var(--bg-code);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 20px 24px;
+  overflow-x: auto;
+  margin-bottom: 20px;
+  font-size: 13.5px;
+  line-height: 1.65;
+}
+code {
+  font-family: 'SF Mono', 'Fira Code', 'Cascadia Code', Consolas, monospace;
+  font-size: 13.5px;
+}
+p code, li code, td code {
+  background: rgba(108,140,255,0.1);
+  color: var(--accent);
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 12.5px;
+}
+/* Tables */
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-bottom: 20px;
+  font-size: 14px;
+}
+th {
+  background: var(--bg-code);
+  color: var(--accent);
+  text-align: left;
+  padding: 10px 16px;
+  border: 1px solid var(--border);
+  font-weight: 600;
+  font-size: 13px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+td {
+  padding: 10px 16px;
+  border: 1px solid var(--border);
+}
+tr:nth-child(even) { background: rgba(108,140,255,0.03); }
+/* Diagram */
+.diagram {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 28px;
+  margin: 24px 0;
+  text-align: center;
+}
+.diagram svg { max-width: 100%; height: auto; }
+/* Callout */
+.callout {
+  background: rgba(108,140,255,0.06);
+  border-left: 3px solid var(--accent);
+  padding: 16px 20px;
+  border-radius: 0 8px 8px 0;
+  margin-bottom: 20px;
+  font-size: 14px;
+}
+/* Responsive */
+@media (max-width: 900px) {
+  .sidebar { display: none; }
+  .main { margin-left: 0; padding: 24px 20px 60px; }
+}
+</style>
+</head>
+<body>
+
+<nav class="sidebar">
+  <h2>03-SFT / 01</h2>
+  <ul>
+    <li class="section-label">概述</li>
+    <li><a href="#what">什么是指令微调</a></li>
+    <li><a href="#alpaca">Alpaca 格式</a></li>
+    <li class="section-label">核心技术</li>
+    <li><a href="#masking">标签遮罩：关键技术</a></li>
+    <li><a href="#architecture">架构设计</a></li>
+    <li><a href="#walkthrough">代码详解</a></li>
+    <li class="section-label">实践</li>
+    <li><a href="#training">训练技巧</a></li>
+    <li><a href="#datasets">真实数据集</a></li>
+    <li><a href="#exercises">练习</a></li>
+    <li><a href="#takeaways">关键要点</a></li>
+    <li><a href="#references">延伸阅读</a></li>
+  </ul>
+</nav>
+
+<main class="main">
+
+<h1>Instruction Tuning</h1>
+<p class="subtitle">Module 03 -- Supervised Fine-Tuning, Chapter 01</p>
+
+<p>预训练语言模型了解大量语言知识，但它不知道如何遵循指令。它补全文本，而不是回答问题。指令微调弥合了这一差距：通过在（指令，回复）对上进行微调，我们教会模型将指令视为上下文，并生成有帮助的回复。</p>
+<p>本章实现核心机制：Alpaca 风格的提示格式化、标签遮罩（使模型仅从回复中学习），以及尊重遮罩的损失函数。</p>
+
+<h2 id="prerequisites">前置知识</h2>
+<ul>
+  <li>Transformer 语言模型基础（模块 01）</li>
+  <li>预训练循环和损失计算（模块 02）</li>
+  <li>PyTorch Dataset 和 DataLoader</li>
+</ul>
+
+<h2>文件说明</h2>
+<table>
+  <tr><th>文件</th><th>用途</th></tr>
+  <tr><td><code>instruction_tuning.py</code></td><td>核心实现：InstructionDataset、format_instruction、compute_instruction_loss</td></tr>
+  <tr><td><code>exercise.py</code></td><td>填空练习，用于巩固理解</td></tr>
+  <tr><td><code>solution.py</code></td><td>练习参考答案</td></tr>
+  <tr><td><code>tests.py</code></td><td>pytest 测试用例</td></tr>
+</table>
+
+<hr>
+
+<h2 id="what">什么是指令微调</h2>
+
+<h3>从文本补全到任务完成</h3>
+<p>预训练大语言模型的训练目标是预测下一个 token。给定"法国的首都是"，它会产生"巴黎"--不是因为它理解问题，而是因为那是训练数据中最可能的延续。</p>
+<p>指令微调改变了这一目标。模型不再是补全任意文本，而是学习响应结构化的指令：</p>
+<pre><code>指令：将以下句子翻译成法语。
+输入：Hello, how are you?
+输出：Bonjour, comment allez-vous ?</code></pre>
+<p>经过指令微调后，模型学会了一个通用模式：给定指令和可选输入，产生适当的输出。这在推理时可以泛化到未见过的指令。</p>
+
+<h3>为什么不只用提示工程？</h3>
+<p>提示工程可以说服预训练模型遵循指令，但这很脆弱。措辞的微小变化可能产生截然不同的输出。指令微调使模型更加稳健：它可靠地遵循各种措辞的指令，因为它已被训练这样做。</p>
+
+<h3 id="alpaca">Alpaca 格式</h3>
+<p>斯坦福 Alpaca 项目（2023）推广了一种简单的三部分模板：</p>
+<pre><code>### Instruction:
+{instruction}
+
+### Input:
+{input}
+
+### Response:
+{output}</code></pre>
+<p>当没有输入上下文时，省略 <code>### Input:</code> 部分。这种格式有三个优点：</p>
+<ol>
+  <li><strong>清晰的分隔符</strong> -- <code>###</code> 标记使程序化查找每个部分变得容易</li>
+  <li><strong>人类可读</strong> -- 你可以直接检查训练样本</li>
+  <li><strong>广泛采用</strong> -- 许多开源数据集和模型使用这种精确格式</li>
+</ol>
+
+<!-- SVG: Instruction Tuning Pipeline -->
+<div class="diagram">
+<svg width="760" height="200" viewBox="0 0 760 200" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect x="10" y="60" width="140" height="80" rx="10" fill="#1e2233" stroke="#6c8cff" stroke-width="1.5"/>
+  <text x="80" y="95" text-anchor="middle" fill="#6c8cff" font-size="13" font-weight="600">Instruction</text>
+  <text x="80" y="115" text-anchor="middle" fill="#8b8fa3" font-size="11">+ Input (可选)</text>
+  <rect x="200" y="60" width="140" height="80" rx="10" fill="#1e2233" stroke="#4ade80" stroke-width="1.5"/>
+  <text x="270" y="95" text-anchor="middle" fill="#4ade80" font-size="13" font-weight="600">Prompt 格式化</text>
+  <text x="270" y="115" text-anchor="middle" fill="#8b8fa3" font-size="11">Alpaca 模板</text>
+  <rect x="390" y="60" width="140" height="80" rx="10" fill="#1e2233" stroke="#fb923c" stroke-width="1.5"/>
+  <text x="460" y="95" text-anchor="middle" fill="#fb923c" font-size="13" font-weight="600">标签遮罩</text>
+  <text x="460" y="115" text-anchor="middle" fill="#8b8fa3" font-size="11">labels[:p] = -100</text>
+  <rect x="580" y="60" width="150" height="80" rx="10" fill="#1e2233" stroke="#a78bfa" stroke-width="1.5"/>
+  <text x="655" y="95" text-anchor="middle" fill="#a78bfa" font-size="13" font-weight="600">交叉熵损失</text>
+  <text x="655" y="115" text-anchor="middle" fill="#8b8fa3" font-size="11">仅计算回复部分</text>
+  <!-- Arrows -->
+  <path d="M150 100 L200 100" stroke="#555" stroke-width="1.5" marker-end="url(#arrow)"/>
+  <path d="M340 100 L390 100" stroke="#555" stroke-width="1.5" marker-end="url(#arrow)"/>
+  <path d="M530 100 L580 100" stroke="#555" stroke-width="1.5" marker-end="url(#arrow)"/>
+  <defs>
+    <marker id="arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto">
+      <path d="M0 0 L8 4 L0 8 Z" fill="#555"/>
+    </marker>
+  </defs>
+  <text x="380" y="185" text-anchor="middle" fill="#555" font-size="12">指令微调流水线</text>
+</svg>
+</div>
+
+<hr>
+
+<h2 id="masking">标签遮罩：关键技术</h2>
+
+<h3>问题</h3>
+<p>如果我们在完整文本（指令 + 回复）上训练，模型会浪费容量学习预测指令 token。指令在推理时是给定的 -- 我们不需要模型生成它。我们只希望模型学会产生回复。</p>
+
+<h3>解决方案</h3>
+<p>我们创建两个 token 序列：</p>
+<ol>
+  <li><strong>完整序列</strong>：指令 + 回复（用作 <code>input_ids</code>）</li>
+  <li><strong>仅提示</strong>：不含回复的指令（用于计算遮罩长度）</li>
+</ol>
+<p>然后设置 <code>labels[:prompt_length] = -100</code>。PyTorch 的 <code>cross_entropy</code> 设置 <code>ignore_index=-100</code> 会完全跳过这些位置。模型接收完整序列作为输入（因此通过注意力机制看到指令），但仅在回复 token 上计算损失。</p>
+
+<!-- SVG: Label Masking Diagram -->
+<div class="diagram">
+<svg width="700" height="140" viewBox="0 0 700 140" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- input_ids row -->
+  <text x="10" y="30" fill="#8b8fa3" font-size="12" font-family="monospace">input_ids:</text>
+  <rect x="100" y="14" width="220" height="28" rx="6" fill="#3a4a7a" stroke="#6c8cff" stroke-width="1"/>
+  <text x="210" y="33" text-anchor="middle" fill="#fff" font-size="11">[tok_1, tok_2, ..., tok_p]</text>
+  <rect x="330" y="14" width="220" height="28" rx="6" fill="#2a5a2a" stroke="#4ade80" stroke-width="1"/>
+  <text x="440" y="33" text-anchor="middle" fill="#fff" font-size="11">[tok_p+1, ..., tok_n]</text>
+  <!-- labels row -->
+  <text x="10" y="85" fill="#8b8fa3" font-size="12" font-family="monospace">labels:   </text>
+  <rect x="100" y="69" width="220" height="28" rx="6" fill="#5a2a2a" stroke="#f87171" stroke-width="1"/>
+  <text x="210" y="88" text-anchor="middle" fill="#f87171" font-size="11">[-100, -100, ..., -100]</text>
+  <rect x="330" y="69" width="220" height="28" rx="6" fill="#2a5a2a" stroke="#4ade80" stroke-width="1"/>
+  <text x="440" y="88" text-anchor="middle" fill="#fff" font-size="11">[tok_p+1, ..., tok_n]</text>
+  <!-- Labels -->
+  <text x="210" y="115" text-anchor="middle" fill="#f87171" font-size="11">遮罩（指令）</text>
+  <text x="440" y="115" text-anchor="middle" fill="#4ade80" font-size="11">训练（回复）</text>
+  <text x="560" y="135" text-anchor="middle" fill="#555" font-size="11">ignore_index=-100</text>
+</svg>
+</div>
+
+<h3>为什么这很重要</h3>
+<p>没有标签遮罩，指令微调会退化为继续预训练。模型将大部分梯度信号用于预测它已经知道的指令 token。有了标签遮罩，100% 的训练信号用于学习回复行为 -- 这就是指令微调数据效率高的原因。</p>
+
+<hr>
+
+<h2 id="architecture">架构设计</h2>
+
+<h3>InstructionDataset</h3>
+<p>一个 PyTorch Dataset，功能如下：</p>
+<ol>
+  <li>存储示例列表，每个示例包含 <code>instruction</code>、可选的 <code>input</code> 和 <code>output</code></li>
+  <li>将每个示例格式化为 Alpaca 模板</li>
+  <li>对完整文本和仅提示文本进行分词</li>
+  <li>创建用于仅回复训练的遮罩标签</li>
+</ol>
+<pre><code>class InstructionDataset(Dataset):
+    def __init__(self, examples, tokenizer=None, max_length=512, template="alpaca"):
+        self.examples = examples
+        self.tokenizer = tokenizer
+        self.max_length = max_length
+        self.template = template</code></pre>
+<p><code>tokenizer</code> 参数是可选的。如果为 <code>None</code>，使用简单的字符级回退（无需真实分词器即可测试）。</p>
+
+<h3>format_instruction</h3>
+<p>一个独立函数，将指令示例格式化为提示字符串。支持两种模板：</p>
+<ul>
+  <li><strong>alpaca</strong>：使用 <code>### Instruction:</code>、<code>### Input:</code>、<code>### Response:</code>，以双换行分隔</li>
+  <li><strong>simple</strong>：使用 <code>Instruction:</code>、<code>Input:</code>、<code>Output:</code>，以单换行分隔</li>
+</ul>
+<pre><code>def format_instruction(instruction, input_text="", output="", template="alpaca"):
+    if template == "alpaca":
+        if input_text:
+            prompt = f"### Instruction:\n{instruction}\n\n### Input:\n{input_text}\n\n### Response:\n"
+        else:
+            prompt = f"### Instruction:\n{instruction}\n\n### Response:\n"
+        return prompt + output</code></pre>
+
+<h3>compute_instruction_loss</h3>
+<p>计算交叉熵损失，设置 <code>ignore_index=-100</code>，使遮罩位置（指令）不参与梯度计算：</p>
+<pre><code>def compute_instruction_loss(model, batch):
+    logits = model(batch["input_ids"])
+    loss = F.cross_entropy(
+        logits.view(-1, logits.size(-1)),
+        batch["labels"].view(-1),
+        ignore_index=-100,
+    )
+    return loss</code></pre>
+
+<hr>
+
+<h2 id="walkthrough">代码详解</h2>
+
+<h3>步骤 1：格式化示例</h3>
+<pre><code>full_text = self._format_alpaca(example)
+# "### Instruction:\nSummarize\n\n### Response:\nThe summary."</code></pre>
+<p>完整文本包含指令和回复。这是模型看到的输入。</p>
+
+<h3>步骤 2：格式化仅提示</h3>
+<pre><code>prompt_text = self._format_prompt_only(example)
+# "### Instruction:\nSummarize\n\n### Response:\n"</code></pre>
+<p>提示文本在回复标记处结束。其长度告诉我们回复从哪里开始。</p>
+
+<h3>步骤 3：分词</h3>
+<pre><code>full_ids = self.tokenizer.encode(full_text)[:self.max_length]
+prompt_ids = self.tokenizer.encode(prompt_text)[:self.max_length]</code></pre>
+<p>两者都被截断到 <code>max_length</code>。提示 ID 始终是完整 ID 的前缀，因为提示是完整文本的前缀。</p>
+
+<h3>步骤 4：创建遮罩标签</h3>
+<pre><code>input_ids = torch.tensor(full_ids, dtype=torch.long)
+labels = input_ids.clone()
+labels[:len(prompt_ids)] = -100</code></pre>
+<p>标签是输入 ID 的副本，但指令部分被替换为 -100。模型看到完整序列，但只从回复中学习。</p>
+
+<h3>步骤 5：返回批次项</h3>
+<pre><code>return {
+    "input_ids": input_ids,
+    "labels": labels,
+    "attention_mask": torch.ones(len(full_ids), dtype=torch.long),
+}</code></pre>
+<p>注意力掩码全是 1（每个 token 都被关注）。在实践中，你可能会使用填充，并将填充位置的掩码设为 0。</p>
+
+<hr>
+
+<h2 id="training">训练技巧</h2>
+
+<h3>学习率</h3>
+<p>指令微调使用比预训练更低的学习率。典型值：</p>
+<ul>
+  <li>全量微调：1e-5 到 5e-5</li>
+  <li>LoRA：1e-4 到 3e-4（更高，因为更新的参数更少）</li>
+</ul>
+<p>学习率过高会导致灾难性遗忘 -- 模型失去其预训练知识。</p>
+
+<h3>数据质量优于数量</h3>
+<p>Alpaca 项目表明，52,000 个高质量示例可以产生强大的指令遵循模型。更多数据有帮助，但质量更重要。优先考虑清晰、多样化的指令和准确的回复。</p>
+
+<h3>训练轮次</h3>
+<p>通常 1-3 个 epoch 就足够了。更多轮次有过拟合的风险，尤其是在小数据集上。监控验证损失，如果趋于平稳则提前停止。</p>
+
+<h3>梯度累积</h3>
+<p>对于大模型，你可能需要梯度累积来实现超出 GPU 内存容量的有效批量大小：</p>
+<pre><code>for i, batch in enumerate(dataloader):
+    loss = compute_instruction_loss(model, batch) / accumulation_steps
+    loss.backward()
+    if (i + 1) % accumulation_steps == 0:
+        optimizer.step()
+        optimizer.zero_grad()</code></pre>
+
+<h3>混合精度</h3>
+<p>使用 <code>torch.amp</code> 进行混合精度训练，以减少内存使用并加速计算：</p>
+<pre><code>with torch.amp.autocast("cuda"):
+    loss = compute_instruction_loss(model, batch)</code></pre>
+
+<hr>
+
+<h2 id="datasets">真实世界的指令微调数据集</h2>
+<table>
+  <tr><th>数据集</th><th>规模</th><th>来源</th></tr>
+  <tr><td>Stanford Alpaca</td><td>52K</td><td>GPT-4 生成</td></tr>
+  <tr><td>ShareGPT</td><td>~90K</td><td>用户分享的 ChatGPT 对话</td></tr>
+  <tr><td>OpenAssistant</td><td>~160K</td><td>人工编写的对话</td></tr>
+  <tr><td>Dolly 2.0</td><td>15K</td><td>Databricks 员工</td></tr>
+  <tr><td>LIMA</td><td>1K</td><td>精心策划（研究性质）</td></tr>
+</table>
+<div class="callout">
+  LIMA 论文（"Less Is More for Alignment"，2023）表明，仅 1,000 个精心策划的示例就可以产生有竞争力的模型。数据质量胜过数据数量。
+</div>
+
+<hr>
+
+<h2 id="exercises">练习</h2>
+<p>打开 <code>exercise.py</code> 来练习自己实现指令微调。</p>
+
+<h3>练习顺序</h3>
+<ol>
+  <li><strong><code>format_instruction_exercise</code></strong> -- 将指令示例格式化为 Alpaca 模板</li>
+  <li><strong><code>InstructionDatasetExercise.__getitem__</code></strong> -- 分词、创建遮罩标签、返回批次项</li>
+  <li><strong><code>compute_instruction_loss_exercise</code></strong> -- 计算带标签遮罩的交叉熵损失</li>
+</ol>
+
+<h3>提示</h3>
+<ul>
+  <li>从 <code>format_instruction</code> 开始。这是一个字符串格式化练习 -- 不涉及张量。</li>
+  <li>对于 <code>__getitem__</code>，关键洞察是：分别对完整文本和仅提示文本进行分词，然后遮罩提示部分的标签。</li>
+  <li>对于 <code>compute_instruction_loss</code>，记住 <code>ignore_index=-100</code> 是跳过指令 token 损失的魔法。</li>
+</ul>
+
+<h3>运行测试</h3>
+<pre><code>cd /path/to/llm-from-scratch
+pytest 03-sft/01_instruction_tuning/tests.py -v</code></pre>
+
+<hr>
+
+<h2 id="takeaways">关键要点</h2>
+<ol>
+  <li><strong>指令微调教会模型遵循指令。</strong> 通过在（指令，回复）对上进行微调，模型学会将指令视为上下文并生成有帮助的回复。</li>
+  <li><strong>标签遮罩是核心技术。</strong> 设置 <code>labels[:prompt_length] = -100</code> 确保模型仅从回复中学习，而非指令。这使训练高效且专注。</li>
+  <li><strong>Alpaca 格式简单有效。</strong> 三个部分（指令、输入、回复）配以清晰的分隔符。输入部分是可选的。</li>
+  <li><strong>数据质量比数量更重要。</strong> 1K-52K 个高质量示例可以产生强大的指令遵循模型。重点关注多样化、准确的示例。</li>
+  <li><strong>损失函数是带遮罩的标准交叉熵。</strong> <code>F.cross_entropy(logits, labels, ignore_index=-100)</code> 完成所有工作。遮罩发生在标签中，而非损失函数中。</li>
+</ol>
+
+<hr>
+
+<h2 id="references">延伸阅读</h2>
+<ul>
+  <li><a href="https://github.com/tatsu-lab/stanford_alpaca">Stanford Alpaca (Taori et al., 2023)</a> -- 数据集和训练方案</li>
+  <li><a href="https://arxiv.org/abs/2305.11206">LIMA: Less Is More for Alignment (Zhou et al., 2023)</a> -- 1,000 个示例可能就够了</li>
+  <li><a href="https://arxiv.org/abs/2212.10560">Self-Instruct (Wang et al., 2023)</a> -- 从模型本身生成指令数据</li>
+  <li><a href="https://arxiv.org/abs/2305.16264">Scaling Data-Constrained Language Models (Muennighoff et al., 2023)</a> -- 多少数据才够</li>
+  <li><a href="https://arxiv.org/abs/2301.13688">The Flan Collection (Longpre et al., 2023)</a> -- 大规模指令微调数据集</li>
+</ul>
+
+</main>
+</body>
+</html>

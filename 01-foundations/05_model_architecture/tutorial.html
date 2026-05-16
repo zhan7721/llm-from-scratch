@@ -1,0 +1,342 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Complete GPT Model Architecture - LLM From Scratch</title>
+<style>
+:root { --bg: #1a1b26; --sidebar-bg: #13141b; --card-bg: #1e2030; --text: #c0caf5; --text-muted: #565f89; --accent: #7aa2f7; --accent2: #bb9af7; --green: #9ece6a; --orange: #ff9e64; --red: #f7768e; --cyan: #7dcfff; --border: #292e42; --code-bg: #15161e; --font: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans SC', sans-serif; --mono: 'SF Mono', 'Fira Code', 'Consolas', monospace; }
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { font-family: var(--font); background: var(--bg); color: var(--text); line-height: 1.8; display: flex; }
+.sidebar { width: 280px; min-height: 100vh; background: var(--sidebar-bg); padding: 2rem 1.5rem; position: fixed; top: 0; left: 0; overflow-y: auto; border-right: 1px solid var(--border); }
+.sidebar h2 { color: var(--accent); font-size: 1.1rem; margin-bottom: 1.5rem; padding-bottom: 0.5rem; border-bottom: 1px solid var(--border); }
+.sidebar a { display: block; color: var(--text-muted); text-decoration: none; padding: 0.4rem 0; font-size: 0.9rem; transition: color 0.2s; }
+.sidebar a:hover { color: var(--accent); }
+.sidebar .chapter-nav { margin-top: 2rem; padding-top: 1rem; border-top: 1px solid var(--border); }
+.sidebar .chapter-nav a { color: var(--green); font-size: 0.85rem; }
+.main { margin-left: 280px; padding: 3rem 4rem; max-width: 900px; width: 100%; }
+h1 { font-size: 2.2rem; color: var(--accent); margin-bottom: 0.5rem; }
+.subtitle { color: var(--text-muted); font-size: 1rem; margin-bottom: 2rem; }
+h2 { font-size: 1.5rem; color: var(--accent2); margin: 2.5rem 0 1rem; padding-bottom: 0.3rem; border-bottom: 1px solid var(--border); }
+h3 { font-size: 1.2rem; color: var(--green); margin: 2rem 0 0.8rem; }
+h4 { font-size: 1.05rem; color: var(--orange); margin: 1.5rem 0 0.5rem; }
+p { margin-bottom: 1rem; }
+blockquote { border-left: 3px solid var(--accent); padding: 0.8rem 1.2rem; margin: 1.2rem 0; background: var(--card-bg); border-radius: 0 8px 8px 0; font-style: italic; }
+pre { background: var(--code-bg); border: 1px solid var(--border); border-radius: 8px; padding: 1.2rem; overflow-x: auto; margin: 1rem 0 1.5rem; font-size: 0.9rem; }
+code { font-family: var(--mono); }
+p code, li code { background: var(--code-bg); padding: 0.15rem 0.4rem; border-radius: 4px; font-size: 0.85em; color: var(--cyan); }
+table { width: 100%; border-collapse: collapse; margin: 1rem 0 1.5rem; }
+th { background: var(--card-bg); color: var(--accent); text-align: left; padding: 0.6rem 1rem; border: 1px solid var(--border); }
+td { padding: 0.6rem 1rem; border: 1px solid var(--border); }
+ul, ol { margin: 0.5rem 0 1.2rem 1.5rem; }
+li { margin-bottom: 0.3rem; }
+hr { border: none; border-top: 1px solid var(--border); margin: 2rem 0; }
+strong { color: var(--accent); }
+.diagram-container { background: var(--card-bg); border-radius: 12px; padding: 2rem; margin: 1.5rem 0; text-align: center; border: 1px solid var(--border); }
+.diagram-container svg { max-width: 100%; }
+.key-point { background: linear-gradient(135deg, var(--card-bg), #1a2332); border-radius: 8px; padding: 1rem 1.2rem; margin: 1rem 0; border: 1px solid var(--accent); }
+.step-box { background: var(--card-bg); border-radius: 8px; padding: 1rem 1.2rem; margin: 0.8rem 0; border-left: 3px solid var(--green); }
+.step-box .step-num { color: var(--green); font-weight: bold; }
+a { color: var(--accent); text-decoration: none; }
+a:hover { text-decoration: underline; }
+@media (max-width: 900px) { .sidebar { display: none; } .main { margin-left: 0; padding: 2rem 1.5rem; } }
+</style>
+</head>
+<body>
+<nav class="sidebar">
+  <h2>GPT Model Architecture</h2>
+  <a href="#big-picture">The Big Picture</a>
+  <a href="#config">GPTConfig</a>
+  <a href="#architecture">Model Architecture</a>
+  <a href="#weight-tying">Weight Tying</a>
+  <a href="#forward-pass">Forward Pass</a>
+  <a href="#generation">Autoregressive Generation</a>
+  <a href="#parameter-counting">Parameter Counting</a>
+  <a href="#llama-choices">LLaMA Design Choices</a>
+  <a href="#code-walkthrough">Code Walkthrough</a>
+  <a href="#how-to-run">How to Run</a>
+  <a href="#exercises">Exercises</a>
+  <a href="#takeaways">Key Takeaways</a>
+  <a href="#further-reading">Further Reading</a>
+  <div class="chapter-nav">
+    <a href="../04_transformer_block/tutorial.html">&larr; 04 Transformer Block</a><br>
+    <a href="../06_moe/tutorial.html">06 MoE &rarr;</a>
+  </div>
+</nav>
+
+<div class="main">
+<h1>Complete GPT Model Architecture</h1>
+<p class="subtitle">Module 01 &mdash; Foundations, Chapter 05</p>
+
+<p>We have built the individual components: embeddings (Chapter 02), attention (Chapter 03), and transformer blocks (Chapter 04). Now we assemble them into a complete language model. This chapter implements a GPT-style model using LLaMA architecture choices: Pre-Norm, RMSNorm, SwiGLU, RoPE, and weight tying.</p>
+
+<hr>
+
+<h2 id="big-picture">The Big Picture</h2>
+
+<p>A GPT model is surprisingly simple at the architecture level. It takes a sequence of token IDs and produces a probability distribution over the next token at every position:</p>
+
+<div class="diagram-container">
+<svg width="500" height="450" viewBox="0 0 500 450">
+  <defs><marker id="arr5" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M 0 0 L 10 5 L 0 10 z" fill="#7aa2f7"/></marker></defs>
+  <text x="250" y="20" text-anchor="middle" fill="#c0caf5" font-size="14" font-weight="bold">GPT Model Architecture</text>
+  <rect x="150" y="35" width="200" height="35" rx="6" fill="#1e2030" stroke="#565f89"/>
+  <text x="250" y="57" text-anchor="middle" fill="#565f89" font-size="12">Input: Token IDs (B, T)</text>
+  <line x1="250" y1="75" x2="250" y2="95" stroke="#565f89" marker-end="url(#arr5)"/>
+  <rect x="130" y="100" width="240" height="35" rx="6" fill="#1e2030" stroke="#7aa2f7"/>
+  <text x="250" y="122" text-anchor="middle" fill="#7aa2f7" font-size="12">TokenEmbedding (scale sqrt(d_model))</text>
+  <line x1="250" y1="140" x2="250" y2="160" stroke="#565f89" marker-end="url(#arr5)"/>
+  <rect x="130" y="165" width="240" height="35" rx="6" fill="#1e2030" stroke="#bb9af7"/>
+  <text x="250" y="187" text-anchor="middle" fill="#bb9af7" font-size="12">RotaryPositionalEmbedding (RoPE)</text>
+  <line x1="250" y1="205" x2="250" y2="225" stroke="#565f89" marker-end="url(#arr5)"/>
+  <rect x="100" y="230" width="300" height="50" rx="8" fill="#1e2030" stroke="#9ece6a" stroke-width="2"/>
+  <text x="250" y="250" text-anchor="middle" fill="#9ece6a" font-size="12">TransformerBlock x N</text>
+  <text x="250" y="270" text-anchor="middle" fill="#565f89" font-size="10">(Attention + SwiGLU + RMSNorm + Residual)</text>
+  <line x1="250" y1="285" x2="250" y2="305" stroke="#565f89" marker-end="url(#arr5)"/>
+  <rect x="150" y="310" width="200" height="35" rx="6" fill="#1e2030" stroke="#ff9e64"/>
+  <text x="250" y="332" text-anchor="middle" fill="#ff9e64" font-size="12">RMSNorm (final)</text>
+  <line x1="250" y1="350" x2="250" y2="370" stroke="#565f89" marker-end="url(#arr5)"/>
+  <rect x="130" y="375" width="240" height="35" rx="6" fill="#1e2030" stroke="#f7768e"/>
+  <text x="250" y="397" text-anchor="middle" fill="#f7768e" font-size="12">Linear lm_head (d_model → vocab_size)</text>
+  <line x1="250" y1="415" x2="250" y2="430" stroke="#565f89" marker-end="url(#arr5)"/>
+  <text x="250" y="445" text-anchor="middle" fill="#7dcfff" font-size="12">Output: Logits (B, T, vocab_size)</text>
+</svg>
+</div>
+
+<pre><code>Input: token IDs (batch_size, seq_len)
+    |
+TokenEmbedding          -- convert IDs to dense vectors
+    |
+RotaryPositionalEmbedding  -- add position information
+    |
+TransformerBlock x N    -- deep processing (attention + FFN)
+    |
+RMSNorm                 -- final normalization
+    |
+Linear lm_head          -- project to vocabulary
+    |
+Output: logits (batch_size, seq_len, vocab_size)</code></pre>
+
+<hr>
+
+<h2 id="config">GPTConfig: Model Hyperparameters</h2>
+
+<pre><code>@dataclass
+class GPTConfig:
+    vocab_size: int = 32000     # vocabulary size
+    d_model: int = 512          # hidden dimension
+    n_heads: int = 8            # attention heads
+    n_layers: int = 6           # transformer blocks
+    d_ff: int = None            # FFN hidden dim (default: SwiGLU formula)
+    max_seq_len: int = 1024     # max sequence length for RoPE
+    dropout: float = 0.0        # dropout (unused, kept for compatibility)</code></pre>
+
+<h3>Parameter Scaling</h3>
+
+<table>
+  <tr><th>Model</th><th>d_model</th><th>n_heads</th><th>n_layers</th><th>d_ff</th><th>Parameters</th></tr>
+  <tr><td>GPT-2 Small</td><td>768</td><td>12</td><td>12</td><td>3072</td><td>117M</td></tr>
+  <tr><td>GPT-2 Medium</td><td>1024</td><td>16</td><td>24</td><td>4096</td><td>345M</td></tr>
+  <tr><td>LLaMA 7B</td><td>4096</td><td>32</td><td>32</td><td>11008</td><td>6.7B</td></tr>
+  <tr><td>LLaMA 13B</td><td>5120</td><td>40</td><td>40</td><td>13824</td><td>13B</td></tr>
+  <tr><td>LLaMA 65B</td><td>8192</td><td>64</td><td>80</td><td>22016</td><td>65B</td></tr>
+</table>
+
+<hr>
+
+<h2 id="weight-tying">Weight Tying</h2>
+
+<p>One of the most important design choices is <strong>weight tying</strong>:</p>
+
+<pre><code>self.lm_head.weight = self.token_emb.embedding.weight</code></pre>
+
+<p>This makes the output projection matrix share the same parameters as the input embedding matrix.</p>
+
+<h3>Why Weight Tying Works</h3>
+
+<ol>
+  <li><strong>Parameter reduction</strong>: For vocab_size=32000 and d_model=4096, this saves 131M parameters.</li>
+  <li><strong>Semantic consistency</strong>: Tokens that are semantically similar should have similar embeddings AND produce similar logits.</li>
+  <li><strong>Empirical evidence</strong>: Press & Wolf (2017) showed that weight tying improves perplexity.</li>
+</ol>
+
+<hr>
+
+<h2 id="forward-pass">Forward Pass Walkthrough</h2>
+
+<pre><code>def forward(self, x: torch.Tensor) -> torch.Tensor:
+    h = self.token_emb(x)      # (batch_size, seq_len, d_model)
+    h = self.rope(h)            # (batch_size, seq_len, d_model)
+    for layer in self.layers:
+        h = layer(h)            # (batch_size, seq_len, d_model)
+    h = self.norm(h)            # (batch_size, seq_len, d_model)
+    return self.lm_head(h)      # (batch_size, seq_len, vocab_size)</code></pre>
+
+<h3>Shape Trace</h3>
+
+<pre><code>Input:     (2, 10)           -- token IDs
+Embedding: (2, 10, 64)       -- dense vectors
+RoPE:      (2, 10, 64)       -- position-encoded vectors
+Block 1:   (2, 10, 64)       -- refined representations
+Block 2:   (2, 10, 64)       -- further refined
+Norm:      (2, 10, 64)       -- normalized
+lm_head:   (2, 10, 256)      -- logits for each token in vocab</code></pre>
+
+<hr>
+
+<h2 id="generation">Autoregressive Generation</h2>
+
+<pre><code>@torch.no_grad()
+def generate(self, prompt, max_new_tokens=100, temperature=1.0):
+    for _ in range(max_new_tokens):
+        idx_cond = prompt[:, -self.config.max_seq_len:]
+        logits = self(idx_cond)
+        logits = logits[:, -1, :] / temperature
+        probs = F.softmax(logits, dim=-1)
+        next_token = torch.multinomial(probs, num_samples=1)
+        prompt = torch.cat([prompt, next_token], dim=1)
+    return prompt</code></pre>
+
+<h3>Temperature</h3>
+
+<table>
+  <tr><th>Temperature</th><th>Effect</th></tr>
+  <tr><td><code>T = 1.0</code></td><td>Standard sampling from the model's distribution</td></tr>
+  <tr><td><code>T &lt; 1.0</code> (e.g., 0.7)</td><td>Sharper distribution, more confident picks</td></tr>
+  <tr><td><code>T &gt; 1.0</code> (e.g., 1.5)</td><td>Flatter distribution, more random</td></tr>
+  <tr><td><code>T → 0</code></td><td>Approaches greedy decoding</td></tr>
+</table>
+
+<p>Mathematically, temperature divides the logits before softmax:</p>
+
+<pre><code>P(token_i) = exp(logit_i / T) / sum_j(exp(logit_j / T))</code></pre>
+
+<hr>
+
+<h2 id="parameter-counting">Parameter Counting</h2>
+
+<h3>Example: LLaMA 7B</h3>
+
+<pre><code>d_model = 4096, n_heads = 32, n_layers = 32, d_ff = 11008, vocab_size = 32000
+
+Per block:
+  Attention: 4 x 4096^2 = 67,108,864
+  SwiGLU:    3 x 4096 x 11008 = 135,266,304
+  RMSNorm:   2 x 4096 = 8,192
+  Total:     202,383,360
+
+All blocks: 32 x 202,383,360 = 6,476,267,520
+Embedding:  32000 x 4096 = 131,072,000
+Final norm: 4096
+
+Total: ~6,607,343,616 (approximately 6.7B parameters)</code></pre>
+
+<h3>Memory Estimation</h3>
+
+<table>
+  <tr><th>Precision</th><th>Memory</th></tr>
+  <tr><td>FP32 (4 bytes)</td><td>6.7B x 4 = 26.8 GB</td></tr>
+  <tr><td>FP16/BF16 (2 bytes)</td><td>6.7B x 2 = 13.4 GB</td></tr>
+  <tr><td>Training (mixed precision)</td><td>~8x parameter memory</td></tr>
+  <tr><td>Inference (FP16)</td><td>~1x parameter memory</td></tr>
+</table>
+
+<hr>
+
+<h2 id="llama-choices">LLaMA Design Choices Summary</h2>
+
+<table>
+  <tr><th>Component</th><th>GPT-2</th><th>LLaMA / Our Model</th></tr>
+  <tr><td>Normalization</td><td>LayerNorm (Post-Norm)</td><td>RMSNorm (Pre-Norm)</td></tr>
+  <tr><td>FFN activation</td><td>ReLU</td><td>SwiGLU</td></tr>
+  <tr><td>FFN hidden dim</td><td>4 x d_model</td><td>(2/3) x 4 x d_model</td></tr>
+  <tr><td>Position encoding</td><td>Absolute learned</td><td>RoPE</td></tr>
+  <tr><td>Linear bias</td><td>Yes</td><td>No</td></tr>
+  <tr><td>Weight tying</td><td>Sometimes</td><td>Yes</td></tr>
+  <tr><td>Output norm</td><td>None</td><td>RMSNorm</td></tr>
+</table>
+
+<hr>
+
+<h2 id="code-walkthrough">Code Walkthrough</h2>
+
+<pre><code>class GPT(nn.Module):
+    def __init__(self, config: GPTConfig):
+        super().__init__()
+        self.config = config
+
+        self.token_emb = TokenEmbedding(config.vocab_size, config.d_model)
+        self.rope = RotaryPositionalEmbedding(config.d_model, config.max_seq_len)
+        self.layers = nn.ModuleList([
+            TransformerBlock(config.d_model, config.n_heads, config.d_ff)
+            for _ in range(config.n_layers)
+        ])
+        self.norm = RMSNorm(config.d_model)
+        self.lm_head = nn.Linear(config.d_model, config.vocab_size, bias=False)
+
+        # Weight tying
+        self.lm_head.weight = self.token_emb.embedding.weight</code></pre>
+
+<p>Key implementation details:</p>
+<ul>
+  <li><code>nn.ModuleList</code> is used instead of a Python list so PyTorch properly registers the sub-modules.</li>
+  <li>Weight tying is done by simple assignment.</li>
+  <li><code>bias=False</code> on the linear layer follows LLaMA convention.</li>
+</ul>
+
+<hr>
+
+<h2 id="how-to-run">How to Run</h2>
+
+<pre><code>pytest 01-foundations/05_model_architecture/tests.py -v</code></pre>
+
+<hr>
+
+<h2 id="exercises">Exercises</h2>
+
+<ol>
+  <li><code>__init__</code>: Create all layers (embedding, RoPE, transformer blocks, norm, lm_head)</li>
+  <li><code>Weight tying</code>: Make lm_head.weight point to token_emb.embedding.weight</li>
+  <li><code>forward</code>: Wire up the pipeline (embedding -> RoPE -> blocks -> norm -> lm_head)</li>
+  <li><code>generate</code>: Implement the autoregressive generation loop</li>
+</ol>
+
+<h3>Tips</h3>
+
+<ul>
+  <li>Start with <code>__init__</code>. Each component is a single line using classes from previous chapters.</li>
+  <li>For weight tying, the key line is <code>self.lm_head.weight = self.token_emb.embedding.weight</code>.</li>
+  <li>For <code>forward</code>, think of it as a pipeline: each step takes a tensor and returns a tensor of the same shape.</li>
+  <li>For <code>generate</code>, don't forget to apply temperature and use <code>torch.multinomial</code> for sampling.</li>
+</ul>
+
+<hr>
+
+<h2 id="takeaways">Key Takeaways</h2>
+
+<div class="key-point">
+<ol>
+  <li><strong>GPT is simple.</strong> The architecture is just: embedding -> N transformer blocks -> norm -> linear head.</li>
+  <li><strong>Weight tying reduces parameters and improves quality.</strong> Sharing the embedding and output projection matrices is a simple trick with significant benefits.</li>
+  <li><strong>Temperature controls generation diversity.</strong> Lower temperature = more confident, higher temperature = more random.</li>
+  <li><strong>LLaMA's design choices are now standard.</strong> Pre-Norm, RMSNorm, SwiGLU, RoPE, no bias &mdash; these have been validated at scale.</li>
+  <li><strong>Parameter counting is predictable.</strong> The dominant terms are attention (4 x d_model^2 per layer) and FFN (3 x d_model x d_ff per layer).</li>
+</ol>
+</div>
+
+<hr>
+
+<h2 id="further-reading">Further Reading</h2>
+
+<ul>
+  <li><a href="https://arxiv.org/abs/2302.13971">LLaMA Paper (Touvron et al., 2023)</a></li>
+  <li><a href="https://cdn.openai.com/better-language-models/language_models_are_unsupervised_multitask_learners.pdf">GPT-2 Paper (Radford et al., 2019)</a></li>
+  <li><a href="https://arxiv.org/abs/1608.05859">Weight Tying (Press & Wolf, 2017)</a></li>
+  <li><a href="https://arxiv.org/abs/2001.08361">Scaling Laws (Kaplan et al., 2020)</a></li>
+  <li><a href="https://arxiv.org/abs/2104.09864">RoPE Paper (Su et al., 2021)</a></li>
+  <li><a href="https://arxiv.org/abs/2204.02311">PaLM Paper (Chowdhery et al., 2022)</a></li>
+</ul>
+
+</div>
+</body>
+</html>

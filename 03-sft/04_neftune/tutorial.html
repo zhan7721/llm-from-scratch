@@ -1,0 +1,537 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>NEFTune - 噪声嵌入微调</title>
+<style>
+:root {
+  --sidebar-width: 280px;
+  --bg: #0f1117;
+  --bg-card: #1a1d27;
+  --bg-code: #12141c;
+  --text: #e0e0e6;
+  --text-muted: #8b8fa3;
+  --accent: #6c8cff;
+  --accent-dim: #3a4a7a;
+  --green: #4ade80;
+  --orange: #fb923c;
+  --red: #f87171;
+  --purple: #a78bfa;
+  --border: #2a2d3a;
+  --sidebar-bg: #0b0d14;
+}
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  line-height: 1.75;
+  display: flex;
+  min-height: 100vh;
+}
+.sidebar {
+  width: var(--sidebar-width);
+  background: var(--sidebar-bg);
+  border-right: 1px solid var(--border);
+  padding: 24px 0;
+  position: fixed;
+  top: 0; left: 0; bottom: 0;
+  overflow-y: auto;
+  z-index: 10;
+}
+.sidebar h2 {
+  font-size: 14px;
+  text-transform: uppercase;
+  letter-spacing: 1.5px;
+  color: var(--accent);
+  padding: 0 20px 12px;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 12px;
+}
+.sidebar ul { list-style: none; }
+.sidebar li a {
+  display: block;
+  padding: 7px 20px;
+  color: var(--text-muted);
+  text-decoration: none;
+  font-size: 13.5px;
+  transition: all 0.2s;
+  border-left: 2px solid transparent;
+}
+.sidebar li a:hover, .sidebar li a.active {
+  color: var(--text);
+  background: rgba(108,140,255,0.06);
+  border-left-color: var(--accent);
+}
+.sidebar li.section-label {
+  padding: 14px 20px 4px;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: var(--accent);
+  font-weight: 600;
+}
+.main {
+  margin-left: var(--sidebar-width);
+  flex: 1;
+  max-width: 880px;
+  padding: 48px 56px 80px;
+}
+h1 {
+  font-size: 36px;
+  font-weight: 700;
+  color: #fff;
+  margin-bottom: 8px;
+  line-height: 1.2;
+}
+.subtitle {
+  color: var(--accent);
+  font-size: 14px;
+  letter-spacing: 0.5px;
+  margin-bottom: 40px;
+}
+h2 {
+  font-size: 24px;
+  font-weight: 600;
+  color: #fff;
+  margin-top: 56px;
+  margin-bottom: 20px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--border);
+}
+h3 {
+  font-size: 18px;
+  font-weight: 600;
+  color: #fff;
+  margin-top: 36px;
+  margin-bottom: 14px;
+}
+p { margin-bottom: 16px; }
+strong { color: #fff; }
+a { color: var(--accent); text-decoration: none; }
+a:hover { text-decoration: underline; }
+ul, ol { margin: 0 0 16px 24px; }
+li { margin-bottom: 6px; }
+hr { border: none; border-top: 1px solid var(--border); margin: 40px 0; }
+pre {
+  background: var(--bg-code);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 20px 24px;
+  overflow-x: auto;
+  margin-bottom: 20px;
+  font-size: 13.5px;
+  line-height: 1.65;
+}
+code {
+  font-family: 'SF Mono', 'Fira Code', 'Cascadia Code', Consolas, monospace;
+  font-size: 13.5px;
+}
+p code, li code, td code {
+  background: rgba(108,140,255,0.1);
+  color: var(--accent);
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 12.5px;
+}
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-bottom: 20px;
+  font-size: 14px;
+}
+th {
+  background: var(--bg-code);
+  color: var(--accent);
+  text-align: left;
+  padding: 10px 16px;
+  border: 1px solid var(--border);
+  font-weight: 600;
+  font-size: 13px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+td {
+  padding: 10px 16px;
+  border: 1px solid var(--border);
+}
+tr:nth-child(even) { background: rgba(108,140,255,0.03); }
+.diagram {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 28px;
+  margin: 24px 0;
+  text-align: center;
+}
+.diagram svg { max-width: 100%; height: auto; }
+.callout {
+  background: rgba(108,140,255,0.06);
+  border-left: 3px solid var(--accent);
+  padding: 16px 20px;
+  border-radius: 0 8px 8px 0;
+  margin-bottom: 20px;
+  font-size: 14px;
+}
+@media (max-width: 900px) {
+  .sidebar { display: none; }
+  .main { margin-left: 0; padding: 24px 20px 60px; }
+}
+</style>
+</head>
+<body>
+
+<nav class="sidebar">
+  <h2>03-SFT / 04</h2>
+  <ul>
+    <li class="section-label">概述</li>
+    <li><a href="#motivation">动机：训练不足的嵌入</a></li>
+    <li><a href="#idea">NEFTune 核心思想</a></li>
+    <li class="section-label">核心技术</li>
+    <li><a href="#formula">噪声公式</a></li>
+    <li><a href="#scheduling">调度策略</a></li>
+    <li><a href="#architecture">架构设计</a></li>
+    <li class="section-label">实践</li>
+    <li><a href="#walkthrough">代码详解</a></li>
+    <li><a href="#results">实验结果</a></li>
+    <li><a href="#usage">何时使用</a></li>
+    <li><a href="#tips">训练技巧</a></li>
+    <li><a href="#exercises">练习</a></li>
+    <li><a href="#takeaways">关键要点</a></li>
+    <li><a href="#references">延伸阅读</a></li>
+  </ul>
+</nav>
+
+<main class="main">
+
+<h1>NEFTune: Noisy Embedding Fine-Tuning</h1>
+<p class="subtitle">Module 03 -- Supervised Fine-Tuning, Chapter 04</p>
+
+<p>在微调预训练语言模型时，嵌入层相对于网络的其他部分往往训练不足。NEFTune 通过在训练期间向嵌入注入均匀噪声来解决这个问题，作为一种正则化器，可以提高指令遵循任务的泛化能力。该技术实现简单，计算开销可以忽略不计，并且在基准测试中能带来一致的改进。</p>
+<p>本章实现 NEFTune：噪声嵌入模块、带调度选项的配置，以及将其应用于任意模型的工具函数。</p>
+
+<h2>前置知识</h2>
+<ul>
+  <li>Transformer 语言模型基础（模块 01）</li>
+  <li>有监督微调概念（模块 03，第 01 章）</li>
+  <li>PyTorch nn.Module 和 nn.Embedding</li>
+</ul>
+
+<h2>文件说明</h2>
+<table>
+  <tr><th>文件</th><th>用途</th></tr>
+  <tr><td><code>neftune.py</code></td><td>核心实现：NEFTuneEmbedding、NEFTuneConfig、apply_neftune</td></tr>
+  <tr><td><code>exercise.py</code></td><td>填空练习，用于巩固理解</td></tr>
+  <tr><td><code>solution.py</code></td><td>练习参考答案</td></tr>
+  <tr><td><code>tests.py</code></td><td>pytest 测试用例</td></tr>
+</table>
+
+<hr>
+
+<h2 id="motivation">动机：训练不足的嵌入</h2>
+<p>在典型的 Transformer 中，嵌入层将 token ID 映射到稠密向量。在预训练期间，该层从语言建模损失中接收梯度，但其参数在所有位置和序列之间共享。预训练后，嵌入矩阵已经学习了词汇表的有用表示，但在较小数据集上进行微调时，嵌入可能无法很好地适应新的分布。</p>
+<p>结果是：模型的内部表示受到在微调期间更新不足的嵌入的瓶颈限制。这对于指令调优尤其成问题，因为模型需要从相对较少的示例中学习新的行为模式。</p>
+
+<h2 id="idea">NEFTune 核心思想</h2>
+<p>NEFTune（Jain 等人，2023）提出了一个非常简单的修复方案：在微调期间向嵌入向量添加均匀噪声。</p>
+<pre><code>embeddings = embedding_layer(token_ids)
+noise = uniform(-0.5, 0.5) * (alpha / sqrt(L * d))
+embeddings = embeddings + noise</code></pre>
+<p>其中：</p>
+<ul>
+  <li><code>L</code> 是序列长度</li>
+  <li><code>d</code> 是嵌入维度</li>
+  <li><code>alpha</code> 是超参数（通常为 5-15）</li>
+</ul>
+<p>噪声仅在训练期间添加。在评估时，嵌入层正常工作。</p>
+
+<h3>为什么有效？</h3>
+<p>噪声起到正则化的作用。通过在每一步对嵌入进行轻微扰动，NEFTune 防止模型对微调期间看到的精确嵌入向量过拟合。这鼓励模型建立对小扰动具有鲁棒性的表示，从而实现更好的泛化。</p>
+<p>按 <code>1/sqrt(L*d)</code> 缩放确保噪声幅度相对于嵌入维度和序列长度进行归一化。较长的序列每个位置获得按比例更小的噪声，使总扰动幅度大致保持恒定。</p>
+
+<!-- SVG: NEFTune Noise Injection -->
+<div class="diagram">
+<svg width="680" height="240" viewBox="0 0 680 240" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- Token IDs -->
+  <rect x="20" y="90" width="100" height="60" rx="8" fill="#1e2233" stroke="#8b8fa3" stroke-width="1.5"/>
+  <text x="70" y="115" text-anchor="middle" fill="#e0e0e6" font-size="12" font-weight="600">Token IDs</text>
+  <text x="70" y="135" text-anchor="middle" fill="#8b8fa3" font-size="10">(batch, seq_len)</text>
+  <!-- Arrow -->
+  <path d="M120 120 L155 120" stroke="#555" stroke-width="1.5" marker-end="url(#an)"/>
+  <!-- Embedding -->
+  <rect x="155" y="80" width="130" height="80" rx="8" fill="#1e2233" stroke="#6c8cff" stroke-width="1.5"/>
+  <text x="220" y="110" text-anchor="middle" fill="#6c8cff" font-size="12" font-weight="600">nn.Embedding</text>
+  <text x="220" y="130" text-anchor="middle" fill="#8b8fa3" font-size="10">标准嵌入查找</text>
+  <text x="220" y="148" text-anchor="middle" fill="#8b8fa3" font-size="10">(batch, seq_len, d)</text>
+  <!-- Arrow -->
+  <path d="M285 120 L320 120" stroke="#555" stroke-width="1.5" marker-end="url(#an)"/>
+  <!-- Noise generation -->
+  <rect x="320" y="30" width="140" height="50" rx="8" fill="#1e2233" stroke="#fb923c" stroke-width="1.5"/>
+  <text x="390" y="52" text-anchor="middle" fill="#fb923c" font-size="12" font-weight="600">生成噪声</text>
+  <text x="390" y="70" text-anchor="middle" fill="#8b8fa3" font-size="10">uniform(-0.5, 0.5)</text>
+  <!-- Arrow from noise -->
+  <path d="M390 80 L390 100" stroke="#fb923c" stroke-width="1.5" marker-end="url(#an)"/>
+  <!-- Add -->
+  <rect x="320" y="100" width="140" height="60" rx="8" fill="#1e2233" stroke="#4ade80" stroke-width="1.5"/>
+  <text x="390" y="125" text-anchor="middle" fill="#4ade80" font-size="12" font-weight="600">+ 噪声</text>
+  <text x="390" y="145" text-anchor="middle" fill="#8b8fa3" font-size="10">alpha / sqrt(L * d)</text>
+  <!-- Arrow -->
+  <path d="M460 130 L495 130" stroke="#555" stroke-width="1.5" marker-end="url(#an)"/>
+  <!-- Output -->
+  <rect x="495" y="90" width="160" height="60" rx="8" fill="#1e2233" stroke="#a78bfa" stroke-width="1.5"/>
+  <text x="575" y="115" text-anchor="middle" fill="#a78bfa" font-size="12" font-weight="600">带噪声的嵌入</text>
+  <text x="575" y="135" text-anchor="middle" fill="#8b8fa3" font-size="10">仅训练时添加</text>
+  <!-- Training indicator -->
+  <rect x="320" y="180" width="140" height="36" rx="6" fill="rgba(74,222,128,0.1)" stroke="#4ade80" stroke-width="1"/>
+  <text x="390" y="203" text-anchor="middle" fill="#4ade80" font-size="11">self.training == True</text>
+  <!-- Label -->
+  <text x="340" y="232" text-anchor="middle" fill="#555" font-size="11">NEFTune 噪声注入流程</text>
+  <defs>
+    <marker id="an" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto">
+      <path d="M0 0 L8 4 L0 8 Z" fill="#555"/>
+    </marker>
+  </defs>
+</svg>
+</div>
+
+<hr>
+
+<h2 id="formula">噪声公式</h2>
+<p>单次前向传播的噪声缩放为：</p>
+<pre><code>noise_scale = alpha / sqrt(seq_len * embedding_dim)</code></pre>
+<p>嵌入张量的每个元素接收来自 <code>[-0.5, 0.5]</code> 的独立均匀噪声，乘以 <code>noise_scale</code>。</p>
+
+<h3>特性</h3>
+<ul>
+  <li><strong>较短的序列每个 token 获得更多噪声。</strong> 这是有道理的：token 较少时，每个 token 更重要，因此正则化器可以更强。</li>
+  <li><strong>较大的嵌入维度每个元素获得更少噪声。</strong> 总噪声能量以 <code>sqrt(d)</code> 缩放，因此每元素噪声减少。</li>
+  <li><strong>Alpha 控制整体强度。</strong> 较高的 alpha 意味着更多噪声。原始论文发现 alpha=5 到 15 效果良好。</li>
+</ul>
+
+<h3>示例</h3>
+<p>对于长度为 128、嵌入维度为 768、alpha=5 的序列：</p>
+<pre><code>noise_scale = 5 / sqrt(128 * 768) = 5 / sqrt(98304) = 5 / 313.5 = 0.016</code></pre>
+<p>每个嵌入元素获得来自 <code>[-0.008, 0.008]</code> 的噪声 -- 相对于典型的嵌入幅度来说是很小的扰动。</p>
+
+<hr>
+
+<h2 id="scheduling">调度策略</h2>
+<p>NEFTuneConfig 支持三种噪声调度：</p>
+
+<h3>恒定（Constant）</h3>
+<p>默认策略。Alpha 在整个训练过程中保持不变。</p>
+<pre><code>alpha(step) = alpha</code></pre>
+
+<h3>预热（Warmup）</h3>
+<p>Alpha 在 <code>warmup_steps</code> 步内从 0 线性增加到目标值。</p>
+<pre><code>alpha(step) = alpha * min(step / warmup_steps, 1.0)</code></pre>
+<p>这避免了训练开始时模型仍在适应阶段的较大噪声。</p>
+
+<h3>线性衰减（Linear Decay）</h3>
+<p>Alpha 在 <code>warmup_steps</code> 步内从目标值线性减小到 0。</p>
+<pre><code>alpha(step) = alpha * max(1 - step / warmup_steps, 0.0)</code></pre>
+<p>这将正则化集中在前期，随着训练推进和模型收敛而减少。</p>
+
+<!-- SVG: Scheduling visualization -->
+<div class="diagram">
+<svg width="600" height="200" viewBox="0 0 600 200" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- Axes -->
+  <line x1="60" y1="160" x2="560" y2="160" stroke="#555" stroke-width="1"/>
+  <line x1="60" y1="160" x2="60" y2="20" stroke="#555" stroke-width="1"/>
+  <text x="310" y="190" text-anchor="middle" fill="#8b8fa3" font-size="11">Training Steps</text>
+  <text x="30" y="90" text-anchor="middle" fill="#8b8fa3" font-size="11" transform="rotate(-90, 30, 90)">Alpha</text>
+  <!-- Constant -->
+  <line x1="60" y1="50" x2="560" y2="50" stroke="#6c8cff" stroke-width="2"/>
+  <text x="565" y="54" fill="#6c8cff" font-size="10">Constant</text>
+  <!-- Warmup -->
+  <polyline points="60,160 310,50 560,50" fill="none" stroke="#4ade80" stroke-width="2"/>
+  <text x="565" y="54" fill="#4ade80" font-size="10" dy="14">Warmup</text>
+  <!-- Linear Decay -->
+  <polyline points="60,50 310,160 560,160" fill="none" stroke="#fb923c" stroke-width="2"/>
+  <text x="565" y="164" fill="#fb923c" font-size="10">Decay</text>
+  <!-- Grid -->
+  <text x="55" y="54" text-anchor="end" fill="#555" font-size="10">alpha</text>
+  <text x="55" y="164" text-anchor="end" fill="#555" font-size="10">0</text>
+  <text x="310" y="175" text-anchor="middle" fill="#555" font-size="10">warmup_steps</text>
+</svg>
+</div>
+
+<hr>
+
+<h2 id="architecture">架构设计</h2>
+
+<h3>NEFTuneEmbedding</h3>
+<p>作为 nn.Embedding 的直接替换，在训练期间添加噪声：</p>
+<pre><code>class NEFTuneEmbedding(nn.Module):
+    def __init__(self, num_embeddings, embedding_dim, alpha=5.0, padding_idx=None):
+        super().__init__()
+        self.embedding = nn.Embedding(num_embeddings, embedding_dim, padding_idx=padding_idx)
+        self.alpha = alpha
+        self.embedding_dim = embedding_dim
+
+    def forward(self, x):
+        embeddings = self.embedding(x)
+        if self.training and self.alpha > 0:
+            seq_len = x.shape[1]
+            noise_scale = self.alpha / math.sqrt(seq_len * self.embedding_dim)
+            noise = torch.zeros_like(embeddings).uniform_(-0.5, 0.5) * noise_scale
+            embeddings = embeddings + noise
+        return embeddings</code></pre>
+<p>关键设计选择：</p>
+<ul>
+  <li><strong>包装 nn.Embedding</strong> 而非继承，保持基础嵌入可访问。</li>
+  <li><strong>仅在训练期间添加噪声</strong> -- <code>self.training</code> 在评估时为 False，因此不添加噪声。</li>
+  <li><strong>Alpha=0 禁用噪声</strong> -- 嵌入行为与 nn.Embedding 完全相同。</li>
+</ul>
+
+<h3>NEFTuneConfig</h3>
+<p>管理噪声调度：</p>
+<pre><code>config = NEFTuneConfig(alpha=5.0, schedule="warmup", warmup_steps=100)
+alpha_at_step_50 = config.get_alpha(50)  # 2.5</code></pre>
+
+<h3>apply_neftune</h3>
+<p>用于在现有模型中查找并替换 nn.Embedding 层的工具函数：</p>
+<pre><code>model = apply_neftune(model, alpha=5.0)</code></pre>
+<p>它通过名称搜索嵌入模块，优先选择名称中包含 "token" 的模块（因为模型通常同时有 token 嵌入和位置嵌入，而 NEFTune 针对的是 token 嵌入）。</p>
+
+<hr>
+
+<h2 id="walkthrough">代码详解</h2>
+
+<h3>步骤 1：创建 NEFTune 嵌入</h3>
+<pre><code>neftune_emb = NEFTuneEmbedding(
+    num_embeddings=vocab_size,
+    embedding_dim=hidden_dim,
+    alpha=5.0,
+    padding_idx=pad_token_id,
+)</code></pre>
+<p>这用相同的参数包装标准 nn.Embedding。</p>
+
+<h3>步骤 2：带噪声的前向传播</h3>
+<pre><code>embeddings = self.embedding(x)  # 标准嵌入查找
+if self.training and self.alpha > 0:
+    seq_len = x.shape[1]
+    noise_scale = self.alpha / math.sqrt(seq_len * self.embedding_dim)
+    noise = torch.zeros_like(embeddings).uniform_(-0.5, 0.5) * noise_scale
+    embeddings = embeddings + noise</code></pre>
+<p>每次前向传播都会生成新的噪声。<code>torch.zeros_like(embeddings).uniform_(-0.5, 0.5)</code> 创建一个形状和设备相同的张量，填充均匀随机值。</p>
+
+<h3>步骤 3：应用到现有模型</h3>
+<pre><code>def apply_neftune(model, alpha=5.0):
+    for name, module in model.named_modules():
+        if isinstance(module, nn.Embedding) and "token" in name.lower():
+            neftune_emb = NEFTuneEmbedding(
+                module.num_embeddings, module.embedding_dim,
+                alpha=alpha, padding_idx=module.padding_idx,
+            )
+            neftune_emb.embedding.weight.data = module.weight.data.clone()
+            # 导航到父模块并替换
+            parent_name = ".".join(name.split(".")[:-1])
+            child_name = name.split(".")[-1]
+            parent = model
+            for part in parent_name.split("."):
+                if part:
+                    parent = getattr(parent, part)
+            setattr(parent, child_name, neftune_emb)
+            break</code></pre>
+<p>权重数据被克隆，使新嵌入从相同的预训练权重开始。</p>
+
+<hr>
+
+<h2 id="results">实验结果</h2>
+<p>原始 NEFTune 论文（Jain 等人，2023）报告了在指令遵循基准上的一致改进：</p>
+<table>
+  <tr><th>模型</th><th>无 NEFTune</th><th>有 NEFTune</th></tr>
+  <tr><td>LLaMA-2-7B (Alpaca)</td><td>62.5%</td><td>65.2%</td></tr>
+  <tr><td>LLaMA-2-13B (Alpaca)</td><td>67.1%</td><td>69.0%</td></tr>
+  <tr><td>LLaMA-2-7B (ShareGPT)</td><td>64.8%</td><td>66.9%</td></tr>
+</table>
+<p>改进在不同的基础模型、数据集大小和评估基准上保持一致。该技术没有明显的计算开销。</p>
+
+<hr>
+
+<h2 id="usage">何时使用 NEFTune</h2>
+<p>NEFTune 在以下情况最有用：</p>
+<ol>
+  <li><strong>在小数据集上微调</strong> -- 正则化效果防止过拟合。</li>
+  <li><strong>指令调优</strong> -- 原始论文专门针对此用例。</li>
+  <li><strong>怀疑嵌入训练不足时</strong> -- 如果模型性能提前达到平台期，NEFTune 可以帮助。</li>
+  <li><strong>作为低成本改进</strong> -- 不增加参数，计算开销可以忽略。</li>
+</ol>
+<p>NEFTune 在以下情况可能不太有用：</p>
+<ol>
+  <li><strong>在非常大的数据集上微调</strong> -- 正则化效果可能不必要。</li>
+  <li><strong>在嵌入层使用 LoRA</strong> -- LoRA 已经提供了一些正则化。</li>
+  <li><strong>Alpha 过高</strong> -- 过多的噪声会损害性能。从 alpha=5 开始。</li>
+</ol>
+
+<hr>
+
+<h2 id="tips">训练技巧</h2>
+
+<h3>Alpha 选择</h3>
+<ul>
+  <li>从 alpha=5 开始（原始论文的默认值）。</li>
+  <li>如果模型过拟合，增加到 10-15。</li>
+  <li>如果训练不稳定，减少到 1-3。</li>
+</ul>
+
+<h3>与其他技术结合</h3>
+<p>NEFTune 与以下技术兼容：</p>
+<ul>
+  <li><strong>LoRA</strong> -- 对嵌入应用 NEFTune，对注意力层应用 LoRA。</li>
+  <li><strong>梯度累积</strong> -- 每次前向传播添加噪声，与累积无关。</li>
+  <li><strong>混合精度</strong> -- 噪声生成在 fp16 和 bf16 下都能工作。</li>
+</ul>
+
+<h3>监控</h3>
+<p>你可以通过检查嵌入层在训练期间是否为 NEFTuneEmbedding 的实例来验证 NEFTune 是否激活：</p>
+<pre><code>for name, module in model.named_modules():
+    if isinstance(module, NEFTuneEmbedding):
+        print(f"NEFTune 在 {name} 上激活，alpha={module.alpha}")</code></pre>
+
+<hr>
+
+<h2 id="exercises">练习</h2>
+<p>打开 <code>exercise.py</code> 来练习自己实现 NEFTune。</p>
+<h3>练习顺序</h3>
+<ol>
+  <li><strong><code>NEFTuneEmbeddingExercise.forward</code></strong> -- 在训练期间向嵌入添加均匀噪声</li>
+  <li><strong><code>NEFTuneConfigExercise.get_alpha</code></strong> -- 实现噪声调度</li>
+  <li><strong><code>apply_neftune_exercise</code></strong> -- 在现有模型中替换嵌入层</li>
+</ol>
+<h3>提示</h3>
+<ul>
+  <li>对于 <code>forward</code>，关键步骤是：获取基础嵌入，计算噪声缩放，生成均匀噪声，缩放并添加。</li>
+  <li>对于 <code>get_alpha</code>，将每种调度类型作为单独的分支处理。使用 <code>max(..., 1)</code> 避免除以零。</li>
+  <li>对于 <code>apply_neftune</code>，难点在于导航到父模块以替换子模块。按 "." 分割模块名称并遍历层次结构。</li>
+</ul>
+
+<h3>运行测试</h3>
+<pre><code>cd /path/to/llm-from-scratch
+pytest 03-sft/04_neftune/tests.py -v</code></pre>
+
+<hr>
+
+<h2 id="takeaways">关键要点</h2>
+<ol>
+  <li><strong>NEFTune 在训练期间向嵌入添加均匀噪声。</strong> 这作为正则化器，改善微调性能。</li>
+  <li><strong>噪声缩放为 alpha / sqrt(L * d)。</strong> 这将噪声相对于序列长度和嵌入维度进行归一化。</li>
+  <li><strong>噪声仅在训练期间添加。</strong> 在评估时，嵌入层正常工作。</li>
+  <li><strong>NEFTune 简单且低成本。</strong> 无额外参数，计算开销可以忽略，且易于实现。</li>
+  <li><strong>Alpha=5 是一个好的默认值。</strong> 根据数据集大小和过拟合行为进行调整。</li>
+</ol>
+
+<hr>
+
+<h2 id="references">延伸阅读</h2>
+<ul>
+  <li><a href="https://arxiv.org/abs/2310.05914">NEFTune: Noisy Embeddings Improve Instruction Finetuning (Jain et al., 2023)</a> -- 原始论文</li>
+  <li><a href="https://huggingface.co/docs/peft/tutorial/peft_model_config">HuggingFace PEFT NEFTune 集成</a> -- 在 PEFT 库中使用 NEFTune</li>
+  <li><a href="https://arxiv.org/abs/2401.00000">The Impact of Noise on Fine-Tuning (Chen et al., 2024)</a> -- 噪声正则化的更广泛研究</li>
+</ul>
+
+</main>
+</body>
+</html>

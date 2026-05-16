@@ -1,0 +1,363 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Whisper Speech Recognition -- Module 05, Chapter 04</title>
+<style>
+  :root {
+    --sidebar-w: 260px; --bg: #f8f9fa; --sidebar-bg: #1e1e2e; --sidebar-text: #cdd6f4; --sidebar-active: #89b4fa; --accent: #89b4fa;
+    --code-bg: #282a36; --code-text: #f8f8f2; --card-bg: #ffffff; --text: #333; --heading: #1e1e2e; --border: #e0e0e0;
+    --kw: #ff79c6; --fn: #50fa7b; --str: #f1fa8c; --cm: #6272a4; --num: #bd93f9; --op: #ff79c6; --ty: #8be9fd;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; background: var(--bg); color: var(--text); line-height: 1.7; }
+  a { color: var(--accent); text-decoration: none; } a:hover { text-decoration: underline; }
+  nav.sidebar { position: fixed; top: 0; left: 0; width: var(--sidebar-w); height: 100vh; background: var(--sidebar-bg); color: var(--sidebar-text); overflow-y: auto; padding: 24px 16px; z-index: 100; font-size: 14px; line-height: 1.6; }
+  nav.sidebar .logo { font-size: 18px; font-weight: 700; color: var(--accent); margin-bottom: 8px; }
+  nav.sidebar .subtitle { font-size: 12px; color: #a6adc8; margin-bottom: 24px; border-bottom: 1px solid #313244; padding-bottom: 12px; }
+  nav.sidebar ul { list-style: none; } nav.sidebar li { margin: 2px 0; }
+  nav.sidebar li a { display: block; padding: 6px 10px; border-radius: 6px; color: var(--sidebar-text); font-size: 13px; transition: background 0.15s; }
+  nav.sidebar li a:hover { background: #313244; text-decoration: none; }
+  nav.sidebar li a.active { background: rgba(137,180,250,0.15); color: var(--sidebar-active); font-weight: 600; }
+  main { margin-left: var(--sidebar-w); max-width: 860px; padding: 40px 48px 80px; }
+  h1 { font-size: 2rem; color: var(--heading); margin-bottom: 8px; }
+  .chapter-badge { display: inline-block; background: var(--accent); color: #1e1e2e; font-size: 12px; font-weight: 700; padding: 2px 10px; border-radius: 12px; margin-bottom: 16px; }
+  h2 { font-size: 1.45rem; color: var(--heading); margin: 40px 0 16px; padding-bottom: 8px; border-bottom: 2px solid var(--accent); }
+  h3 { font-size: 1.15rem; color: var(--heading); margin: 28px 0 12px; }
+  p { margin-bottom: 14px; } ul, ol { margin: 0 0 16px 24px; } li { margin-bottom: 4px; }
+  hr { border: none; border-top: 1px solid var(--border); margin: 32px 0; }
+  code { font-family: "SF Mono", "Fira Code", "Cascadia Code", monospace; font-size: 0.88em; }
+  p code, li code, td code { background: #eef; padding: 1px 5px; border-radius: 4px; color: #d63384; }
+  pre { background: var(--code-bg); color: var(--code-text); padding: 18px 20px; border-radius: 8px; overflow-x: auto; margin-bottom: 18px; line-height: 1.55; font-size: 13.5px; }
+  pre code { background: none; color: inherit; padding: 0; }
+  .kw { color: var(--kw); } .fn { color: var(--fn); } .str { color: var(--str); } .cm { color: var(--cm); font-style: italic; } .num { color: var(--num); } .op { color: var(--op); } .ty { color: var(--ty); }
+  table { width: 100%; border-collapse: collapse; margin-bottom: 18px; font-size: 14px; }
+  th { background: var(--heading); color: #fff; text-align: left; padding: 10px 14px; font-weight: 600; }
+  td { padding: 9px 14px; border-bottom: 1px solid var(--border); } tr:nth-child(even) { background: #f4f4f8; }
+  .diagram { text-align: center; margin: 24px 0; } .diagram svg { max-width: 100%; height: auto; }
+  .tip { background: #eef6ff; border-left: 4px solid var(--accent); padding: 14px 18px; border-radius: 6px; margin-bottom: 18px; font-size: 14px; }
+  @media (max-width: 900px) { nav.sidebar { display: none; } main { margin-left: 0; padding: 24px 18px 60px; } }
+</style>
+</head>
+<body>
+
+<nav class="sidebar">
+  <div class="logo">LLM From Scratch</div>
+  <div class="subtitle">Module 05 -- Multimodal</div>
+  <ul>
+    <li><a class="active" href="#overview">The Big Picture</a></li>
+    <li><a href="#config">WhisperConfig</a></li>
+    <li><a href="#architecture">Architecture Details</a></li>
+    <li><a href="#forward">Forward Pass</a></li>
+    <li><a href="#decoding">Greedy Decoding</a></li>
+    <li><a href="#prenorm">Pre-Norm vs Post-Norm</a></li>
+    <li><a href="#howto">How to Run</a></li>
+    <li><a href="#exercises">Exercises</a></li>
+    <li><a href="#takeaways">Key Takeaways</a></li>
+    <li><a href="#reading">Further Reading</a></li>
+  </ul>
+</nav>
+
+<main>
+
+<h1>Whisper-style Speech Recognition</h1>
+<span class="chapter-badge">Module 05 -- Chapter 04</span>
+
+<p>The Whisper model (Radford et al., 2022) is an encoder-decoder Transformer for speech recognition. It converts raw audio waveforms into text transcriptions by: (1) extracting spectrogram features from audio, (2) encoding those features with a Transformer encoder, and (3) autoregressively decoding text tokens with cross-attention to the encoder output.</p>
+
+<h2 id="prerequisites">Prerequisites</h2>
+<ul>
+  <li>Basic understanding of Transformers, self-attention, and cross-attention (Module 01, Chapters 03-04)</li>
+  <li>PyTorch basics: <code>nn.Module</code>, <code>nn.Linear</code>, <code>nn.Embedding</code>, <code>dataclasses</code></li>
+  <li>Familiarity with audio processing concepts (sampling rate, FFT)</li>
+</ul>
+
+<h2>Files</h2>
+<table>
+  <tr><th>File</th><th>Purpose</th></tr>
+  <tr><td><code>speech_recognition.py</code></td><td>Core Whisper-style implementation</td></tr>
+  <tr><td><code>exercise.py</code></td><td>Fill-in-the-blank exercises</td></tr>
+  <tr><td><code>solution.py</code></td><td>Reference solutions</td></tr>
+  <tr><td><code>tests.py</code></td><td>pytest tests for correctness</td></tr>
+</table>
+
+<hr>
+
+<h2 id="overview">The Big Picture</h2>
+<p>A Whisper-style model converts speech to text through three stages:</p>
+
+<div class="diagram">
+<svg viewBox="0 0 560 520" width="520" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <marker id="a4" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto"><path d="M0,0 L8,3 L0,6 Z" fill="#89b4fa"/></marker>
+  </defs>
+  <!-- Audio input -->
+  <rect x="100" y="10" width="360" height="38" rx="8" fill="#eef6ff" stroke="#89b4fa" stroke-width="1.5"/>
+  <text x="280" y="34" text-anchor="middle" font-size="13" font-weight="600" fill="#1e1e2e">Input: raw audio (B, num_samples)</text>
+  <line x1="280" y1="48" x2="280" y2="68" stroke="#89b4fa" stroke-width="1.5" marker-end="url(#a4)"/>
+
+  <!-- Feature Extractor -->
+  <rect x="100" y="71" width="360" height="38" rx="8" fill="#f0fff4" stroke="#50fa7b" stroke-width="1.5"/>
+  <text x="280" y="95" text-anchor="middle" font-size="13" font-weight="600" fill="#1e1e2e">AudioFeatureExtractor -- windowed DFT -> log -> project</text>
+  <line x1="280" y1="109" x2="280" y2="129" stroke="#89b4fa" stroke-width="1.5" marker-end="url(#a4)"/>
+
+  <!-- Encoder -->
+  <rect x="100" y="132" width="360" height="55" rx="8" fill="#fff8e1" stroke="#f9a825" stroke-width="1.5"/>
+  <text x="280" y="152" text-anchor="middle" font-size="13" font-weight="600" fill="#1e1e2e">WhisperEncoder</text>
+  <text x="280" y="172" text-anchor="middle" font-size="11" fill="#666">positional encoding + N x encoder blocks (bidirectional self-attn)</text>
+  <line x1="280" y1="187" x2="280" y2="207" stroke="#89b4fa" stroke-width="1.5" marker-end="url(#a4)"/>
+
+  <!-- Cross-attention arrow -->
+  <line x1="380" y1="230" x2="420" y2="285" stroke="#e91e63" stroke-width="2" stroke-dasharray="6,3" marker-end="url(#a4)"/>
+  <text x="430" y="255" font-size="10" fill="#e91e63" font-weight="600">K, V from encoder</text>
+
+  <!-- Decoder -->
+  <rect x="100" y="275" width="360" height="75" rx="8" fill="#fce4ec" stroke="#e91e63" stroke-width="1.5"/>
+  <text x="280" y="295" text-anchor="middle" font-size="13" font-weight="600" fill="#1e1e2e">WhisperDecoder</text>
+  <text x="280" y="315" text-anchor="middle" font-size="11" fill="#666">causal self-attn + cross-attn to encoder + FFN</text>
+  <text x="280" y="335" text-anchor="middle" font-size="11" fill="#666">token embedding + positional encoding</text>
+  <line x1="280" y1="350" x2="280" y2="370" stroke="#89b4fa" stroke-width="1.5" marker-end="url(#a4)"/>
+
+  <!-- Output -->
+  <rect x="100" y="373" width="360" height="38" rx="8" fill="#e8eaf6" stroke="#5c6bc0" stroke-width="1.5"/>
+  <text x="280" y="397" text-anchor="middle" font-size="13" font-weight="600" fill="#1e1e2e">Output: logits (B, out_len, vocab_size)</text>
+</svg>
+</div>
+
+<h3>Key Insight: Audio as a Sequence</h3>
+<p>The core idea is the same as ViT: treat audio frames as tokens. Raw audio is split into overlapping frames, each frame is converted to a frequency representation via DFT, and these features become the "token embeddings" for a Transformer encoder. The decoder then generates text tokens one at a time, attending to the encoder's output.</p>
+
+<hr>
+
+<h2 id="config">WhisperConfig: Model Hyperparameters</h2>
+
+<pre><code><span class="kw">@dataclass</span>
+<span class="kw">class</span> <span class="ty">WhisperConfig</span>:
+    sample_rate: <span class="ty">int</span> = <span class="num">16000</span>       <span class="cm"># audio sample rate in Hz</span>
+    n_fft: <span class="ty">int</span> = <span class="num">128</span>               <span class="cm"># number of DFT frequency bins</span>
+    frame_length: <span class="ty">int</span> = <span class="num">256</span>        <span class="cm"># audio samples per frame</span>
+    hop_length: <span class="ty">int</span> = <span class="num">128</span>          <span class="cm"># hop between frames</span>
+    d_model: <span class="ty">int</span> = <span class="num">64</span>              <span class="cm"># model dimension</span>
+    num_encoder_layers: <span class="ty">int</span> = <span class="num">2</span>    <span class="cm"># encoder transformer blocks</span>
+    num_decoder_layers: <span class="ty">int</span> = <span class="num">2</span>    <span class="cm"># decoder transformer blocks</span>
+    num_heads: <span class="ty">int</span> = <span class="num">4</span>             <span class="cm"># attention heads</span>
+    dim_feedforward: <span class="ty">int</span> = <span class="num">256</span>     <span class="cm"># FFN hidden dimension</span>
+    max_source_positions: <span class="ty">int</span> = <span class="num">1024</span>   <span class="cm"># max audio frames</span>
+    max_target_positions: <span class="ty">int</span> = <span class="num">512</span>    <span class="cm"># max decoder tokens</span>
+    vocab_size: <span class="ty">int</span> = <span class="num">256</span>          <span class="cm"># output vocabulary size</span>
+    dropout: <span class="ty">float</span> = <span class="num">0.0</span>           <span class="cm"># dropout probability</span></code></pre>
+
+<h3>Whisper Model Sizes</h3>
+<table>
+  <tr><th>Model</th><th>d_model</th><th>num_heads</th><th>num_layers</th><th>Parameters</th></tr>
+  <tr><td>Whisper-Tiny</td><td>384</td><td>6</td><td>4</td><td>39M</td></tr>
+  <tr><td>Whisper-Base</td><td>512</td><td>8</td><td>6</td><td>74M</td></tr>
+  <tr><td>Whisper-Small</td><td>768</td><td>12</td><td>12</td><td>244M</td></tr>
+  <tr><td>Whisper-Medium</td><td>1024</td><td>16</td><td>24</td><td>769M</td></tr>
+  <tr><td>Whisper-Large</td><td>1280</td><td>20</td><td>32</td><td>1550M</td></tr>
+</table>
+<p>Our implementation uses small defaults (d_model=64) for fast testing.</p>
+
+<hr>
+
+<h2 id="architecture">Architecture Details</h2>
+
+<h3>AudioFeatureExtractor</h3>
+<p>Instead of using librosa for mel spectrograms, we implement a simplified version:</p>
+<ol>
+  <li><strong>Framing</strong>: Split audio into overlapping windows of <code>frame_length</code> samples with <code>hop_length</code> stride.</li>
+  <li><strong>Hann Window</strong>: Multiply each frame by a Hann window to reduce spectral leakage.</li>
+  <li><strong>DFT</strong>: Compute the real FFT to get the frequency spectrum.</li>
+  <li><strong>Log Scaling</strong>: Apply <code>log(1 + magnitude)</code> for numerical stability.</li>
+  <li><strong>Linear Projection</strong>: Map from <code>n_fft // 2 + 1</code> frequency bins to <code>d_model</code>.</li>
+</ol>
+
+<pre><code>features = torch.fft.rfft(frames, n=self.n_fft)
+magnitude = torch.abs(features)
+features = torch.log1p(magnitude)
+features = self.projection(features)  <span class="cm"># (B, num_frames, d_model)</span></code></pre>
+
+<h3>WhisperEncoder</h3>
+<p>The encoder processes audio features with:</p>
+<ol>
+  <li><strong>Positional Encoding</strong>: Learnable embeddings added to features (not concatenated).</li>
+  <li><strong>Transformer Blocks</strong>: Pre-Norm blocks with bidirectional self-attention.</li>
+  <li><strong>Final LayerNorm</strong>: Normalization after all blocks.</li>
+</ol>
+
+<pre><code>audio_features (B, num_frames, d_model)
+    -&gt; + positional_encoding[:num_frames]
+    -&gt; N x EncoderBlock (self-attention + FFN)
+    -&gt; LayerNorm
+    -&gt; encoded output (B, num_frames, d_model)</code></pre>
+
+<h3>WhisperDecoder</h3>
+<p>The decoder is autoregressive with three sub-layers per block:</p>
+<ol>
+  <li><strong>Causal Self-Attention</strong>: Attends only to previous tokens (future is masked).</li>
+  <li><strong>Cross-Attention</strong>: Attends to encoder output (Q from decoder, K/V from encoder).</li>
+  <li><strong>FFN</strong>: Standard feed-forward network.</li>
+</ol>
+
+<pre><code>token_ids (B, out_len)
+    -&gt; Token embedding + positional encoding
+    -&gt; N x DecoderBlock
+        -&gt; CausalSelfAttention(LayerNorm(x))
+        -&gt; CrossAttention(LayerNorm(x), encoder_output)
+        -&gt; FFN(LayerNorm(x))
+    -&gt; LayerNorm
+    -&gt; Linear -&gt; logits (B, out_len, vocab_size)</code></pre>
+
+<h3>Cross-Attention</h3>
+<p>The key architectural difference from encoder-only models:</p>
+
+<div class="diagram">
+<svg viewBox="0 0 500 180" width="480" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <marker id="a4x" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto"><path d="M0,0 L8,3 L0,6 Z" fill="#89b4fa"/></marker>
+  </defs>
+  <!-- Decoder hidden -->
+  <rect x="20" y="20" width="160" height="36" rx="6" fill="#fce4ec" stroke="#e91e63" stroke-width="1.5"/>
+  <text x="100" y="43" text-anchor="middle" font-size="12" font-weight="600" fill="#1e1e2e">Decoder Hidden</text>
+  <text x="100" y="72" text-anchor="middle" font-size="10" fill="#666">(B, out_len, d_model)</text>
+
+  <!-- Q arrow -->
+  <line x1="180" y1="38" x2="235" y2="38" stroke="#e91e63" stroke-width="2" marker-end="url(#a4x)"/>
+  <text x="210" y="30" text-anchor="middle" font-size="11" font-weight="600" fill="#e91e63">Q</text>
+
+  <!-- Cross Attention -->
+  <rect x="240" y="18" width="100" height="40" rx="6" fill="#fff3e0" stroke="#ff9800" stroke-width="1.5"/>
+  <text x="290" y="43" text-anchor="middle" font-size="11" font-weight="600" fill="#1e1e2e">Cross Attn</text>
+
+  <!-- K, V arrow -->
+  <line x1="180" y1="140" x2="260" y2="58" stroke="#50fa7b" stroke-width="2" marker-end="url(#a4x)"/>
+  <text x="230" y="115" text-anchor="middle" font-size="11" font-weight="600" fill="#50fa7b">K, V</text>
+
+  <!-- Encoder output -->
+  <rect x="20" y="120" width="160" height="36" rx="6" fill="#f0fff4" stroke="#50fa7b" stroke-width="1.5"/>
+  <text x="100" y="143" text-anchor="middle" font-size="12" font-weight="600" fill="#1e1e2e">Encoder Output</text>
+  <text x="100" y="172" text-anchor="middle" font-size="10" fill="#666">(B, num_frames, d_model)</text>
+
+  <!-- Output -->
+  <line x1="340" y1="38" x2="390" y2="38" stroke="#89b4fa" stroke-width="2" marker-end="url(#a4x)"/>
+  <rect x="395" y="20" width="80" height="36" rx="6" fill="#eef6ff" stroke="#89b4fa" stroke-width="1.5"/>
+  <text x="435" y="43" text-anchor="middle" font-size="11" font-weight="600" fill="#1e1e2e">Output</text>
+</svg>
+</div>
+
+<p>This allows each decoder position to attend to all encoder positions, letting the model "listen" to the audio while generating text.</p>
+
+<pre><code><span class="cm"># Q comes from the decoder, K and V come from the encoder</span>
+cross_out, _ = self.<span class="fn">cross_attn</span>(
+    query=decoder_hidden,    <span class="cm"># (B, out_len, d_model)</span>
+    key=encoder_output,      <span class="cm"># (B, num_frames, d_model)</span>
+    value=encoder_output,    <span class="cm"># (B, num_frames, d_model)</span>
+)</code></pre>
+
+<hr>
+
+<h2 id="forward">Forward Pass Walkthrough</h2>
+
+<pre><code><span class="kw">def</span> <span class="fn">forward</span>(self, audio, decoder_input_ids):
+    <span class="cm"># 1. Extract audio features</span>
+    audio_features = self.<span class="fn">feature_extractor</span>(audio)
+
+    <span class="cm"># 2. Encode audio</span>
+    encoder_output = self.<span class="fn">encoder</span>(audio_features)
+
+    <span class="cm"># 3. Decode to text</span>
+    logits = self.<span class="fn">decoder</span>(decoder_input_ids, encoder_output)
+    <span class="kw">return</span> logits</code></pre>
+
+<h3>Shape Trace</h3>
+<p>For a batch of 2 audio clips (num_samples=1408) with d_model=32:</p>
+<table>
+  <tr><th>Stage</th><th>Shape</th><th>Description</th></tr>
+  <tr><td>Input</td><td>(2, 1408)</td><td>raw audio samples</td></tr>
+  <tr><td>FeatureExtractor</td><td>(2, 11, 32)</td><td>11 frames, each 32-dim</td></tr>
+  <tr><td>Encoder</td><td>(2, 11, 32)</td><td>encoded audio features</td></tr>
+  <tr><td>Decoder (len=5)</td><td>(2, 5, 64)</td><td>5 tokens, 64 vocab logits</td></tr>
+</table>
+
+<hr>
+
+<h2 id="decoding">Greedy Decoding</h2>
+<p>The <code>transcribe</code> method generates tokens one at a time:</p>
+<pre><code>generated = [<span class="num">0</span>]  <span class="cm"># start token</span>
+<span class="kw">for</span> _ <span class="kw">in</span> <span class="fn">range</span>(max_len):
+    logits = <span class="fn">model</span>(audio, generated)
+    next_token = logits[:, <span class="num">-1</span>, :].<span class="fn">argmax</span>(dim=<span class="num">-1</span>)
+    generated.<span class="fn">append</span>(next_token)</code></pre>
+<p>This is the simplest decoding strategy. In production systems, beam search or sampling with temperature is used for better quality.</p>
+
+<hr>
+
+<h2 id="prenorm">Pre-Norm vs Post-Norm</h2>
+<p>Our implementation uses <strong>Pre-Norm</strong> (LayerNorm before attention/FFN):</p>
+<pre><code>Pre-Norm:  x = x + Attention(LayerNorm(x))
+Post-Norm: x = LayerNorm(x + Attention(x))</code></pre>
+<p>Pre-Norm is more stable during training because the residual path is clean (no normalization applied to the residual connection). Most modern Transformers (GPT-2+, Whisper, LLaMA) use Pre-Norm.</p>
+
+<hr>
+
+<h2 id="howto">How to Run</h2>
+
+<h3>Run Tests</h3>
+<pre><code><span class="cm">cd /path/to/llm-from-scratch</span>
+pytest 05-multimodal/04_speech_recognition/tests.py -v</code></pre>
+
+<h3>Run Exercises</h3>
+<p>Open <code>exercise.py</code> and fill in the <code>TODO</code> sections. Then verify:</p>
+<pre><code>pytest 05-multimodal/04_speech_recognition/tests.py -v</code></pre>
+
+<hr>
+
+<h2 id="exercises">Exercises</h2>
+<p>Open <code>exercise.py</code> to practice implementing the Whisper-style speech recognition model yourself.</p>
+
+<h3>Exercise Order</h3>
+<ol>
+  <li><strong>AudioFeatureExtractor</strong>: Create the linear projection, LayerNorm, and implement the DFT pipeline</li>
+  <li><strong>EncoderBlock</strong>: Create LayerNorm, MultiheadAttention, FFN, and implement Pre-Norm forward</li>
+  <li><strong>DecoderBlock</strong>: Create causal self-attention, cross-attention, and FFN sub-layers</li>
+  <li><strong>WhisperEncoder</strong>: Create positional encoding, layer stack, and implement the encoder forward</li>
+  <li><strong>WhisperDecoder</strong>: Create embeddings, layer stack, and implement the decoder forward</li>
+  <li><strong>WhisperModel</strong>: Combine all components into the end-to-end model</li>
+</ol>
+
+<h3>Tips</h3>
+<div class="tip">
+  <ul>
+    <li><code>torch.fft.rfft</code> computes the real FFT, returning complex numbers. Use <code>torch.abs</code> to get magnitudes.</li>
+    <li><code>torch.triu(..., diagonal=1)</code> creates an upper-triangular boolean mask for causal attention.</li>
+    <li>Cross-attention uses the same <code>nn.MultiheadAttention</code> as self-attention, but with different Q, K, V sources.</li>
+    <li>The <code>batch_first=True</code> flag makes <code>nn.MultiheadAttention</code> expect <code>(B, N, D)</code> instead of <code>(N, B, D)</code>.</li>
+  </ul>
+</div>
+
+<hr>
+
+<h2 id="takeaways">Key Takeaways</h2>
+<ol>
+  <li><strong>Whisper treats audio as a sequence.</strong> By converting audio to spectrogram features, we can reuse the Transformer architecture for speech recognition.</li>
+  <li><strong>AudioFeatureExtractor replaces PatchEmbedding.</strong> Instead of Conv2d for image patches, we use windowed DFT + linear projection for audio frames.</li>
+  <li><strong>Cross-attention bridges encoder and decoder.</strong> The decoder's cross-attention to encoder output lets it "listen" to the audio while generating text.</li>
+  <li><strong>Causal masking enables autoregressive generation.</strong> The decoder can only attend to previously generated tokens, ensuring left-to-right generation.</li>
+  <li><strong>Pre-Norm is more training-stable.</strong> Applying LayerNorm before (not after) attention/FFN keeps the residual path clean.</li>
+</ol>
+
+<hr>
+
+<h2 id="reading">Further Reading</h2>
+<ul>
+  <li><a href="https://arxiv.org/abs/2212.04356">Whisper Paper (Radford et al., 2022)</a> -- Robust Speech Recognition via Large-Scale Weak Supervision</li>
+  <li><a href="https://openai.com/research/whisper">OpenAI Whisper Blog</a> -- Announcement and overview</li>
+  <li><a href="https://arxiv.org/abs/1706.03762">Attention Is All You Need (Vaswani et al., 2017)</a> -- Original Transformer paper</li>
+  <li><a href="https://arxiv.org/abs/2006.11477">wav2vec 2.0 (Baevski et al., 2020)</a> -- Self-supervised speech representation learning</li>
+  <li><a href="https://arxiv.org/abs/2106.07447">HuBERT (Hsu et al., 2021)</a> -- Self-supervised speech representation learning</li>
+</ul>
+
+</main>
+</body>
+</html>

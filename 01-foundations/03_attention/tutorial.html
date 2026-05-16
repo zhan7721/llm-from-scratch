@@ -1,0 +1,476 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Multi-Head Attention & GQA - LLM From Scratch</title>
+<style>
+:root { --bg: #1a1b26; --sidebar-bg: #13141b; --card-bg: #1e2030; --text: #c0caf5; --text-muted: #565f89; --accent: #7aa2f7; --accent2: #bb9af7; --green: #9ece6a; --orange: #ff9e64; --red: #f7768e; --cyan: #7dcfff; --border: #292e42; --code-bg: #15161e; --font: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans SC', sans-serif; --mono: 'SF Mono', 'Fira Code', 'Consolas', monospace; }
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { font-family: var(--font); background: var(--bg); color: var(--text); line-height: 1.8; display: flex; }
+.sidebar { width: 280px; min-height: 100vh; background: var(--sidebar-bg); padding: 2rem 1.5rem; position: fixed; top: 0; left: 0; overflow-y: auto; border-right: 1px solid var(--border); }
+.sidebar h2 { color: var(--accent); font-size: 1.1rem; margin-bottom: 1.5rem; padding-bottom: 0.5rem; border-bottom: 1px solid var(--border); }
+.sidebar a { display: block; color: var(--text-muted); text-decoration: none; padding: 0.4rem 0; font-size: 0.9rem; transition: color 0.2s; }
+.sidebar a:hover { color: var(--accent); }
+.sidebar .chapter-nav { margin-top: 2rem; padding-top: 1rem; border-top: 1px solid var(--border); }
+.sidebar .chapter-nav a { color: var(--green); font-size: 0.85rem; }
+.main { margin-left: 280px; padding: 3rem 4rem; max-width: 900px; width: 100%; }
+h1 { font-size: 2.2rem; color: var(--accent); margin-bottom: 0.5rem; }
+.subtitle { color: var(--text-muted); font-size: 1rem; margin-bottom: 2rem; }
+h2 { font-size: 1.5rem; color: var(--accent2); margin: 2.5rem 0 1rem; padding-bottom: 0.3rem; border-bottom: 1px solid var(--border); }
+h3 { font-size: 1.2rem; color: var(--green); margin: 2rem 0 0.8rem; }
+h4 { font-size: 1.05rem; color: var(--orange); margin: 1.5rem 0 0.5rem; }
+p { margin-bottom: 1rem; }
+blockquote { border-left: 3px solid var(--accent); padding: 0.8rem 1.2rem; margin: 1.2rem 0; background: var(--card-bg); border-radius: 0 8px 8px 0; font-style: italic; }
+pre { background: var(--code-bg); border: 1px solid var(--border); border-radius: 8px; padding: 1.2rem; overflow-x: auto; margin: 1rem 0 1.5rem; font-size: 0.9rem; }
+code { font-family: var(--mono); }
+p code, li code { background: var(--code-bg); padding: 0.15rem 0.4rem; border-radius: 4px; font-size: 0.85em; color: var(--cyan); }
+table { width: 100%; border-collapse: collapse; margin: 1rem 0 1.5rem; }
+th { background: var(--card-bg); color: var(--accent); text-align: left; padding: 0.6rem 1rem; border: 1px solid var(--border); }
+td { padding: 0.6rem 1rem; border: 1px solid var(--border); }
+ul, ol { margin: 0.5rem 0 1.2rem 1.5rem; }
+li { margin-bottom: 0.3rem; }
+hr { border: none; border-top: 1px solid var(--border); margin: 2rem 0; }
+strong { color: var(--accent); }
+.diagram-container { background: var(--card-bg); border-radius: 12px; padding: 2rem; margin: 1.5rem 0; text-align: center; border: 1px solid var(--border); }
+.diagram-container svg { max-width: 100%; }
+.key-point { background: linear-gradient(135deg, var(--card-bg), #1a2332); border-radius: 8px; padding: 1rem 1.2rem; margin: 1rem 0; border: 1px solid var(--accent); }
+.step-box { background: var(--card-bg); border-radius: 8px; padding: 1rem 1.2rem; margin: 0.8rem 0; border-left: 3px solid var(--green); }
+.step-box .step-num { color: var(--green); font-weight: bold; }
+a { color: var(--accent); text-decoration: none; }
+a:hover { text-decoration: underline; }
+@media (max-width: 900px) { .sidebar { display: none; } .main { margin-left: 0; padding: 2rem 1.5rem; } }
+</style>
+</head>
+<body>
+<nav class="sidebar">
+  <h2>Multi-Head Attention</h2>
+  <a href="#intuition">The Intuition</a>
+  <a href="#scaled-dot-product">Scaled Dot-Product Attention</a>
+  <a href="#multi-head">Multi-Head Attention</a>
+  <a href="#causal-masking">Causal Masking</a>
+  <a href="#gqa">Grouped Query Attention</a>
+  <a href="#comparison">MHA vs MQA vs GQA</a>
+  <a href="#code-walkthrough">Code Walkthrough</a>
+  <a href="#how-to-run">How to Run</a>
+  <a href="#exercises">Exercises</a>
+  <a href="#takeaways">Key Takeaways</a>
+  <a href="#further-reading">Further Reading</a>
+  <div class="chapter-nav">
+    <a href="../02_embedding/tutorial.html">&larr; 02 Embedding</a><br>
+    <a href="../04_transformer_block/tutorial.html">04 Transformer Block &rarr;</a>
+  </div>
+</nav>
+
+<div class="main">
+<h1>Multi-Head Attention and Grouped Query Attention</h1>
+<p class="subtitle">Module 01 &mdash; Foundations, Chapter 03</p>
+
+<p>Attention is the core mechanism that makes transformers work. It allows each token to look at every other token in the sequence and decide how much to "attend" to each one. In this chapter we build two attention variants from scratch:</p>
+
+<ol>
+  <li><strong>Multi-Head Attention (MHA)</strong> &mdash; the standard attention mechanism from "Attention Is All You Need"</li>
+  <li><strong>Grouped Query Attention (GQA)</strong> &mdash; an efficient variant used in LLaMA 2/3, Mistral, and other modern LLMs</li>
+</ol>
+
+<p>These are the layers that do the actual "thinking" in a transformer. Everything else &mdash; embeddings, layer norms, feed-forward networks &mdash; exists to support them.</p>
+
+<hr>
+
+<h2 id="intuition">The Intuition</h2>
+
+<p>Imagine you are reading the sentence: "The cat, which was very old, sat on the mat."</p>
+
+<p>When you read "sat", you need to know <em>who</em> sat. The answer is "cat", which is several words away. Attention gives the model a mechanism to connect "sat" to "cat" directly, regardless of the distance between them.</p>
+
+<p>More formally, attention lets each token compute a weighted sum of all other tokens in the sequence, where the weights are learned based on how relevant each token is.</p>
+
+<div class="diagram-container">
+<svg width="600" height="180" viewBox="0 0 600 180">
+  <defs><marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M 0 0 L 10 5 L 0 10 z" fill="#7aa2f7"/></marker></defs>
+  <text x="300" y="20" text-anchor="middle" fill="#c0caf5" font-size="14" font-weight="bold">Attention: "sat" attends to "cat"</text>
+  <rect x="30" y="60" width="70" height="35" rx="6" fill="#1e2030" stroke="#565f89"/>
+  <text x="65" y="82" text-anchor="middle" fill="#565f89" font-size="12">The</text>
+  <rect x="110" y="60" width="70" height="35" rx="6" fill="#1e2030" stroke="#9ece6a" stroke-width="2"/>
+  <text x="145" y="82" text-anchor="middle" fill="#9ece6a" font-size="12">cat</text>
+  <rect x="190" y="60" width="100" height="35" rx="6" fill="#1e2030" stroke="#565f89"/>
+  <text x="240" y="82" text-anchor="middle" fill="#565f89" font-size="11">which was...</text>
+  <rect x="300" y="60" width="70" height="35" rx="6" fill="#1e2030" stroke="#7aa2f7" stroke-width="2"/>
+  <text x="335" y="82" text-anchor="middle" fill="#7aa2f7" font-size="12">sat</text>
+  <rect x="380" y="60" width="50" height="35" rx="6" fill="#1e2030" stroke="#565f89"/>
+  <text x="405" y="82" text-anchor="middle" fill="#565f89" font-size="12">on</text>
+  <rect x="440" y="60" width="70" height="35" rx="6" fill="#1e2030" stroke="#565f89"/>
+  <text x="475" y="82" text-anchor="middle" fill="#565f89" font-size="12">the</text>
+  <rect x="520" y="60" width="70" height="35" rx="6" fill="#1e2030" stroke="#565f89"/>
+  <text x="555" y="82" text-anchor="middle" fill="#565f89" font-size="12">mat</text>
+  <path d="M 335 95 Q 240 140 145 95" stroke="#ff9e64" fill="none" stroke-width="2" stroke-dasharray="5,3"/>
+  <text x="240" y="145" text-anchor="middle" fill="#ff9e64" font-size="11">high attention weight</text>
+  <text x="300" y="175" text-anchor="middle" fill="#565f89" font-size="11">Each token computes a weighted sum of all other tokens based on relevance.</text>
+</svg>
+</div>
+
+<hr>
+
+<h2 id="scaled-dot-product">Scaled Dot-Product Attention</h2>
+
+<h3>The Formula</h3>
+
+<p>The core operation is:</p>
+
+<pre><code>Attention(Q, K, V) = softmax(Q @ K^T / sqrt(d_k)) @ V</code></pre>
+
+<p>where:</p>
+<ul>
+  <li><strong>Q</strong> (Query): "What am I looking for?"</li>
+  <li><strong>K</strong> (Key): "What do I contain?"</li>
+  <li><strong>V</strong> (Value): "What information do I provide?"</li>
+  <li><strong>d_k</strong>: Dimension of the key vectors</li>
+</ul>
+
+<div class="diagram-container">
+<svg width="700" height="280" viewBox="0 0 700 280">
+  <text x="350" y="20" text-anchor="middle" fill="#c0caf5" font-size="14" font-weight="bold">Scaled Dot-Product Attention</text>
+  <rect x="20" y="50" width="80" height="40" rx="6" fill="#1e2030" stroke="#7aa2f7"/>
+  <text x="60" y="75" text-anchor="middle" fill="#7aa2f7" font-size="14">Q</text>
+  <rect x="20" y="110" width="80" height="40" rx="6" fill="#1e2030" stroke="#bb9af7"/>
+  <text x="60" y="135" text-anchor="middle" fill="#bb9af7" font-size="14">K</text>
+  <rect x="20" y="170" width="80" height="40" rx="6" fill="#1e2030" stroke="#9ece6a"/>
+  <text x="60" y="195" text-anchor="middle" fill="#9ece6a" font-size="14">V</text>
+  <line x1="110" y1="70" x2="180" y2="70" stroke="#565f89" marker-end="url(#arr)"/>
+  <line x1="110" y1="130" x2="180" y2="130" stroke="#565f89" marker-end="url(#arr)"/>
+  <rect x="190" y="50" width="120" height="80" rx="8" fill="#1e2030" stroke="#ff9e64"/>
+  <text x="250" y="80" text-anchor="middle" fill="#ff9e64" font-size="11">Q @ K^T</text>
+  <text x="250" y="100" text-anchor="middle" fill="#565f89" font-size="10">/ sqrt(d_k)</text>
+  <line x1="320" y1="90" x2="380" y2="90" stroke="#565f89" marker-end="url(#arr)"/>
+  <rect x="390" y="55" width="100" height="40" rx="6" fill="#1e2030" stroke="#f7768e"/>
+  <text x="440" y="80" text-anchor="middle" fill="#f7768e" font-size="11">Softmax</text>
+  <line x1="500" y1="75" x2="540" y2="120" stroke="#565f89" marker-end="url(#arr)"/>
+  <rect x="550" y="100" width="120" height="50" rx="8" fill="#1e2030" stroke="#7dcfff"/>
+  <text x="610" y="120" text-anchor="middle" fill="#7dcfff" font-size="11">Weights @ V</text>
+  <text x="610" y="138" text-anchor="middle" fill="#565f89" font-size="10">= Output</text>
+  <line x1="110" y1="190" x2="540" y2="125" stroke="#565f89" marker-end="url(#arr)"/>
+  <text x="350" y="240" text-anchor="middle" fill="#565f89" font-size="11">Three lines of code:</text>
+  <text x="350" y="265" text-anchor="middle" fill="#c0caf5" font-size="12">scores = Q @ K^T / sqrt(d_k); weights = softmax(scores); output = weights @ V</text>
+</svg>
+</div>
+
+<h3>Step by Step</h3>
+
+<div class="step-box">
+<span class="step-num">Step 1: Compute Q, K, V</span><br>
+Each input token vector <code>x</code> is projected into three different vectors:
+<pre><code>Q = x @ W_q    (what this token is looking for)
+K = x @ W_k    (what this token offers as a key)
+V = x @ W_v    (what information this token provides)</code></pre>
+These are learned linear projections. The same weights are applied to every position.
+</div>
+
+<div class="step-box">
+<span class="step-num">Step 2: Compute Attention Scores</span><br>
+<pre><code>score(i, j) = Q[i] @ K[j]^T
+scores = Q @ K^T    # shape: (seq_len, seq_len)</code></pre>
+Each row i tells us how much position i should attend to every other position.
+</div>
+
+<div class="step-box">
+<span class="step-num">Step 3: Scale</span><br>
+<pre><code>scores = scores / sqrt(d_k)</code></pre>
+<strong>Why scale?</strong> Without scaling, as <code>d_k</code> grows larger, the dot products grow larger in magnitude. Large values push the softmax into regions with extremely small gradients, making training unstable. Dividing by <code>sqrt(d_k)</code> keeps the variance of the dot products at approximately 1.
+</div>
+
+<div class="step-box">
+<span class="step-num">Step 4: Apply Softmax</span><br>
+<pre><code>weights = softmax(scores, dim=-1)    # each row sums to 1</code></pre>
+Now <code>weights[i, j]</code> represents how much position i attends to position j.
+</div>
+
+<div class="step-box">
+<span class="step-num">Step 5: Weighted Sum of Values</span><br>
+<pre><code>output = weights @ V    # shape: (seq_len, d_k)</code></pre>
+Each output position is a weighted combination of all value vectors.
+</div>
+
+<h3>Code</h3>
+
+<pre><code>scores = Q @ K.transpose(-2, -1) / math.sqrt(d_k)
+weights = F.softmax(scores, dim=-1)
+output = weights @ V</code></pre>
+
+<p>Three lines. That is the core of attention.</p>
+
+<hr>
+
+<h2 id="multi-head">Multi-Head Attention</h2>
+
+<h3>Why Multiple Heads?</h3>
+
+<p>A single attention head can only learn one type of relationship at a time. With multiple heads, the model can attend to different types of information simultaneously:</p>
+
+<ul>
+  <li>One head might learn syntactic relationships (subject-verb)</li>
+  <li>Another might learn semantic similarity (cat-animal)</li>
+  <li>Another might learn positional patterns (nearby words)</li>
+</ul>
+
+<h3>How It Works</h3>
+
+<ol>
+  <li><strong>Split</strong>: Divide the d_model dimensions into <code>n_heads</code> groups, each of dimension <code>d_k = d_model / n_heads</code></li>
+  <li><strong>Attend</strong>: Run scaled dot-product attention independently in each head</li>
+  <li><strong>Concatenate</strong>: Concatenate the outputs from all heads</li>
+  <li><strong>Project</strong>: Apply a final linear projection to combine the heads</li>
+</ol>
+
+<pre><code># Split into heads
+Q = Q.view(B, T, n_heads, d_k).transpose(1, 2)  # (B, n_heads, T, d_k)
+K = K.view(B, T, n_heads, d_k).transpose(1, 2)
+V = V.view(B, T, n_heads, d_k).transpose(1, 2)
+
+# Attend in each head (batched matmul does all heads at once)
+scores = Q @ K.transpose(-2, -1) / sqrt(d_k)
+weights = softmax(scores)
+output = weights @ V  # (B, n_heads, T, d_k)
+
+# Concatenate and project
+output = output.transpose(1, 2).contiguous().view(B, T, d_model)
+output = output @ W_o</code></pre>
+
+<h3>Parameter Count</h3>
+
+<p>Each head has three projection matrices of size <code>(d_model, d_k)</code>. With <code>n_heads</code> heads, the total parameter count for Q, K, V is:</p>
+
+<pre><code>3 * d_model * d_model = 3 * d_model^2</code></pre>
+
+<p>This is the same as having a single large projection &mdash; the "split into heads" is just a reshaping trick.</p>
+
+<hr>
+
+<h2 id="causal-masking">Causal Masking</h2>
+
+<h3>The Problem</h3>
+
+<p>In autoregressive models (like GPT), we generate text one token at a time. When predicting the next token, the model should only see previous tokens, not future ones.</p>
+
+<h3>The Solution</h3>
+
+<p>Before applying softmax, we set all future positions to negative infinity:</p>
+
+<pre><code>causal_mask = torch.triu(torch.ones(T, T), diagonal=1).bool()
+scores = scores.masked_fill(causal_mask, float("-inf"))</code></pre>
+
+<p>After softmax, <code>exp(-inf) = 0</code>, so those positions contribute nothing to the attention output.</p>
+
+<pre><code>scores = [[ 0.5,  -inf,  -inf]
+          [ 0.3,   0.7,  -inf]
+          [ 0.2,   0.4,   0.9]]
+
+weights = [[1.0,  0.0,  0.0]
+           [0.3,  0.7,  0.0]
+           [0.1,  0.2,  0.7]]</code></pre>
+
+<p>Position 0 can only attend to itself. Position 1 can attend to positions 0 and 1. Position 2 can attend to all positions.</p>
+
+<div class="diagram-container">
+<svg width="300" height="200" viewBox="0 0 300 200">
+  <text x="150" y="20" text-anchor="middle" fill="#c0caf5" font-size="13" font-weight="bold">Causal Attention Mask</text>
+  <rect x="60" y="40" width="50" height="50" rx="4" fill="#9ece6a" opacity="0.6" stroke="#9ece6a"/>
+  <rect x="115" y="40" width="50" height="50" rx="4" fill="#15161e" stroke="#f7768e"/>
+  <text x="140" y="70" text-anchor="middle" fill="#f7768e" font-size="10">X</text>
+  <rect x="170" y="40" width="50" height="50" rx="4" fill="#15161e" stroke="#f7768e"/>
+  <text x="195" y="70" text-anchor="middle" fill="#f7768e" font-size="10">X</text>
+  <rect x="60" y="95" width="50" height="50" rx="4" fill="#7aa2f7" opacity="0.6" stroke="#7aa2f7"/>
+  <rect x="115" y="95" width="50" height="50" rx="4" fill="#7aa2f7" opacity="0.3" stroke="#7aa2f7"/>
+  <rect x="170" y="95" width="50" height="50" rx="4" fill="#15161e" stroke="#f7768e"/>
+  <text x="195" y="125" text-anchor="middle" fill="#f7768e" font-size="10">X</text>
+  <rect x="60" y="150" width="50" height="50" rx="4" fill="#bb9af7" opacity="0.6" stroke="#bb9af7"/>
+  <rect x="115" y="150" width="50" height="50" rx="4" fill="#bb9af7" opacity="0.3" stroke="#bb9af7"/>
+  <rect x="170" y="150" width="50" height="50" rx="4" fill="#bb9af7" opacity="0.15" stroke="#bb9af7"/>
+  <text x="250" y="70" fill="#565f89" font-size="10">Pos 0 → self</text>
+  <text x="250" y="125" fill="#565f89" font-size="10">Pos 1 → 0,1</text>
+  <text x="250" y="178" fill="#565f89" font-size="10">Pos 2 → 0,1,2</text>
+</svg>
+</div>
+
+<hr>
+
+<h2 id="gqa">Grouped Query Attention (GQA)</h2>
+
+<h3>Motivation: The KV Cache Problem</h3>
+
+<p>During autoregressive inference, we need to store the K and V vectors for all previous tokens (the "KV cache"). For a model with <code>n_heads</code> heads, <code>d_k</code> dimension per head, and sequence length T, the cache size per layer is:</p>
+
+<pre><code>KV cache = 2 * n_heads * d_k * T * bytes_per_element</code></pre>
+
+<p>For a 70B parameter model with 64 heads, this is gigabytes of memory.</p>
+
+<h3>The Idea</h3>
+
+<p>GQA reduces the number of KV heads. Instead of having <code>n_heads</code> KV heads, we have <code>n_kv_heads</code> KV heads, where <code>n_kv_heads &lt; n_heads</code>. Each KV head is shared among a group of query heads.</p>
+
+<pre><code>MHA:  8 query heads, 8 KV heads   (each query head has its own KV)
+GQA:  8 query heads, 2 KV heads   (4 query heads share each KV head)
+MQA:  8 query heads, 1 KV head    (all query heads share one KV)</code></pre>
+
+<div class="diagram-container">
+<svg width="700" height="200" viewBox="0 0 700 200">
+  <text x="150" y="20" text-anchor="middle" fill="#c0caf5" font-size="13" font-weight="bold">MHA (8 KV heads)</text>
+  <text x="370" y="20" text-anchor="middle" fill="#c0caf5" font-size="13" font-weight="bold">GQA (2 KV heads)</text>
+  <text x="570" y="20" text-anchor="middle" fill="#c0caf5" font-size="13" font-weight="bold">MQA (1 KV head)</text>
+  <!-- MHA -->
+  <rect x="30" y="40" width="240" height="30" rx="4" fill="#7aa2f7" opacity="0.3" stroke="#7aa2f7"/>
+  <text x="150" y="60" text-anchor="middle" fill="#7aa2f7" font-size="10">Q: h0 h1 h2 h3 h4 h5 h6 h7</text>
+  <rect x="30" y="80" width="240" height="30" rx="4" fill="#bb9af7" opacity="0.3" stroke="#bb9af7"/>
+  <text x="150" y="100" text-anchor="middle" fill="#bb9af7" font-size="10">KV: h0 h1 h2 h3 h4 h5 h6 h7</text>
+  <!-- GQA -->
+  <rect x="280" y="40" width="180" height="30" rx="4" fill="#7aa2f7" opacity="0.3" stroke="#7aa2f7"/>
+  <text x="370" y="60" text-anchor="middle" fill="#7aa2f7" font-size="10">Q: h0 h1 h2 h3 h4 h5 h6 h7</text>
+  <rect x="310" y="80" width="120" height="30" rx="4" fill="#bb9af7" opacity="0.3" stroke="#bb9af7"/>
+  <text x="370" y="100" text-anchor="middle" fill="#bb9af7" font-size="10">KV: g0 g0 g0 g0 g1 g1 g1 g1</text>
+  <!-- MQA -->
+  <rect x="480" y="40" width="180" height="30" rx="4" fill="#7aa2f7" opacity="0.3" stroke="#7aa2f7"/>
+  <text x="570" y="60" text-anchor="middle" fill="#7aa2f7" font-size="10">Q: h0 h1 h2 h3 h4 h5 h6 h7</text>
+  <rect x="540" y="80" width="60" height="30" rx="4" fill="#bb9af7" opacity="0.3" stroke="#bb9af7"/>
+  <text x="570" y="100" text-anchor="middle" fill="#bb9af7" font-size="10">KV: shared</text>
+  <text x="350" y="150" text-anchor="middle" fill="#565f89" font-size="11">Fewer KV heads = smaller cache = faster inference</text>
+</svg>
+</div>
+
+<h3>How It Works</h3>
+
+<ol>
+  <li><strong>Project Q</strong> to <code>n_heads</code> heads (same as MHA)</li>
+  <li><strong>Project K, V</strong> to <code>n_kv_heads</code> heads (fewer than MHA)</li>
+  <li><strong>Repeat</strong> each KV head <code>n_rep = n_heads / n_kv_heads</code> times to match the query head count</li>
+  <li><strong>Attend</strong> as usual</li>
+</ol>
+
+<pre><code># Project
+Q = W_q(x).view(B, T, n_heads, d_k)       # (B, T, 8, d_k)
+K = W_k(x).view(B, T, n_kv_heads, d_k)     # (B, T, 2, d_k)
+V = W_v(x).view(B, T, n_kv_heads, d_k)     # (B, T, 2, d_k)
+
+# Repeat KV heads
+K = repeat_kv(K)  # (B, T, 2, d_k) -> (B, T, 8, d_k)
+V = repeat_kv(V)  # (B, T, 2, d_k) -> (B, T, 8, d_k)
+
+# Standard attention from here
+scores = Q @ K^T / sqrt(d_k)</code></pre>
+
+<hr>
+
+<h2 id="comparison">Comparison: MHA vs MQA vs GQA</h2>
+
+<table>
+  <tr><th>Method</th><th>KV Heads</th><th>Quality</th><th>KV Cache Size</th><th>Used In</th></tr>
+  <tr><td><strong>MHA</strong></td><td>n_heads</td><td>Best</td><td>Largest</td><td>GPT-3, original Transformer</td></tr>
+  <tr><td><strong>GQA</strong></td><td>8</td><td>~MHA</td><td>8x smaller</td><td>LLaMA 2/3, Mistral, Qwen</td></tr>
+  <tr><td><strong>MQA</strong></td><td>1</td><td>Worse</td><td>Smallest</td><td>PaLM, Falcon</td></tr>
+</table>
+
+<hr>
+
+<h2 id="code-walkthrough">Code Walkthrough</h2>
+
+<h3>MultiHeadAttention</h3>
+
+<pre><code>class MultiHeadAttention(nn.Module):
+    def __init__(self, d_model, n_heads, causal=False):
+        self.W_q = nn.Linear(d_model, d_model, bias=False)
+        self.W_k = nn.Linear(d_model, d_model, bias=False)
+        self.W_v = nn.Linear(d_model, d_model, bias=False)
+        self.W_o = nn.Linear(d_model, d_model, bias=False)
+
+    def forward(self, x, mask=None):
+        B, T, C = x.shape
+        Q = self.W_q(x).view(B, T, self.n_heads, self.d_k).transpose(1, 2)
+        K = self.W_k(x).view(B, T, self.n_heads, self.d_k).transpose(1, 2)
+        V = self.W_v(x).view(B, T, self.n_heads, self.d_k).transpose(1, 2)
+
+        scores = Q @ K.transpose(-2, -1) / math.sqrt(self.d_k)
+
+        if self.causal:
+            causal_mask = torch.triu(torch.ones(T, T, device=x.device), diagonal=1).bool()
+            scores = scores.masked_fill(causal_mask, float("-inf"))
+        if mask is not None:
+            scores = scores.masked_fill(mask == 0, float("-inf"))
+
+        weights = F.softmax(scores, dim=-1)
+        output = weights @ V
+        output = output.transpose(1, 2).contiguous().view(B, T, C)
+        return self.W_o(output)</code></pre>
+
+<h3>GroupedQueryAttention</h3>
+
+<pre><code>class GroupedQueryAttention(nn.Module):
+    def __init__(self, d_model, n_heads, n_kv_heads, causal=False):
+        self.W_q = nn.Linear(d_model, n_heads * self.d_k, bias=False)
+        self.W_k = nn.Linear(d_model, n_kv_heads * self.d_k, bias=False)  # fewer!
+        self.W_v = nn.Linear(d_model, n_kv_heads * self.d_k, bias=False)  # fewer!
+        self.W_o = nn.Linear(d_model, d_model, bias=False)
+
+    def _repeat_kv(self, x):
+        B, n_kv, T, d_k = x.shape
+        if self.n_rep == 1:
+            return x
+        return x[:, :, None, :, :].expand(B, n_kv, self.n_rep, T, d_k).reshape(
+            B, self.n_heads, T, d_k
+        )</code></pre>
+
+<p><strong>Key difference</strong>: K and V projections output <code>n_kv_heads * d_k</code> instead of <code>n_heads * d_k</code>. The <code>_repeat_kv</code> method expands them back to <code>n_heads</code> for the attention computation.</p>
+
+<hr>
+
+<h2 id="how-to-run">How to Run</h2>
+
+<pre><code>pytest 01-foundations/03_attention/tests.py -v</code></pre>
+
+<hr>
+
+<h2 id="exercises">Exercises</h2>
+
+<ol>
+  <li><code>MultiHeadAttentionExercise.__init__</code> &mdash; Create W_q, W_k, W_v, W_o linear layers</li>
+  <li><code>MultiHeadAttentionExercise.forward</code> &mdash; Implement the full MHA forward pass</li>
+  <li><code>GroupedQueryAttentionExercise.__init__</code> &mdash; Create projections with fewer KV heads</li>
+  <li><code>GroupedQueryAttentionExercise._repeat_kv</code> &mdash; Implement KV head repetition</li>
+  <li><code>GroupedQueryAttentionExercise.forward</code> &mdash; Implement the full GQA forward pass</li>
+</ol>
+
+<h3>Tips</h3>
+
+<ul>
+  <li>Start with MHA. The forward pass is: project -> reshape -> scores -> mask -> softmax -> output -> project.</li>
+  <li>The <code>.view(B, T, n_heads, d_k).transpose(1, 2)</code> pattern is how you split a flat vector into multiple heads. Understand why transpose is needed (we want heads as dimension 1 for batched matmul).</li>
+  <li>For GQA, the only difference is that K and V have fewer heads. The <code>_repeat_kv</code> method bridges the gap.</li>
+  <li>The causal mask is just an upper-triangular matrix of bools. <code>torch.triu</code> creates it.</li>
+</ul>
+
+<hr>
+
+<h2 id="takeaways">Key Takeaways</h2>
+
+<div class="key-point">
+<ol>
+  <li><strong>Attention computes weighted sums based on relevance.</strong> Each token looks at all other tokens and decides how much to attend to each one.</li>
+  <li><strong>Scaling by sqrt(d_k) stabilizes training.</strong> Without it, large dot products cause softmax to saturate, leading to vanishing gradients.</li>
+  <li><strong>Multiple heads capture different relationships.</strong> Each head can learn to attend to different aspects of the input (syntax, semantics, position).</li>
+  <li><strong>Causal masking enables autoregressive generation.</strong> By blocking future positions, the model can only use past context when making predictions.</li>
+  <li><strong>GQA reduces KV cache size with minimal quality loss.</strong> By sharing KV heads among groups of query heads, we get significant inference speedup.</li>
+</ol>
+</div>
+
+<hr>
+
+<h2 id="further-reading">Further Reading</h2>
+
+<ul>
+  <li><a href="https://arxiv.org/abs/1706.03762">Attention Is All You Need (Vaswani et al., 2017)</a> &mdash; Original Transformer paper</li>
+  <li><a href="https://arxiv.org/abs/2305.13245">GQA Paper (Ainslie et al., 2023)</a> &mdash; Grouped Query Attention</li>
+  <li><a href="https://arxiv.org/abs/2307.09288">LLaMA 2 Paper (Touvron et al., 2023)</a> &mdash; Uses GQA in a production model</li>
+  <li><a href="https://arxiv.org/abs/1911.02150">Multi-Query Attention (Shazeer, 2019)</a> &mdash; Original MQA proposal</li>
+  <li><a href="https://jalammar.github.io/illustrated-transformer/">The Illustrated Transformer</a> &mdash; Visual explanation of attention</li>
+</ul>
+
+</div>
+</body>
+</html>

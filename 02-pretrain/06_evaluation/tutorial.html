@@ -1,0 +1,482 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Evaluation - LLM Pretraining</title>
+<style>
+:root {
+  --bg: #0f1117;
+  --bg-secondary: #161822;
+  --sidebar-bg: #1a1d2e;
+  --text: #e2e8f0;
+  --text-muted: #94a3b8;
+  --accent: #60a5fa;
+  --accent2: #a78bfa;
+  --accent3: #34d399;
+  --border: #2d3148;
+  --code-bg: #1e2235;
+  --inline-code-bg: #2a2f45;
+}
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  line-height: 1.7;
+  display: flex;
+}
+.sidebar {
+  width: 280px;
+  background: var(--sidebar-bg);
+  border-right: 1px solid var(--border);
+  padding: 24px 0;
+  position: fixed;
+  top: 0; left: 0; bottom: 0;
+  overflow-y: auto;
+  z-index: 100;
+}
+.sidebar h2 {
+  color: var(--accent);
+  font-size: 14px;
+  text-transform: uppercase;
+  letter-spacing: 1.5px;
+  padding: 0 20px 16px;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 12px;
+}
+.sidebar a {
+  display: block;
+  color: var(--text-muted);
+  text-decoration: none;
+  padding: 8px 20px;
+  font-size: 14px;
+  transition: all 0.2s;
+  border-left: 3px solid transparent;
+}
+.sidebar a:hover, .sidebar a.active {
+  color: var(--accent);
+  background: rgba(96,165,250,0.08);
+  border-left-color: var(--accent);
+}
+.sidebar .chapter-link {
+  color: var(--accent2);
+  font-weight: 600;
+  margin-top: 8px;
+}
+.content {
+  margin-left: 280px;
+  flex: 1;
+  padding: 48px 64px;
+  max-width: 960px;
+}
+h1 {
+  font-size: 2.4em;
+  color: #fff;
+  margin-bottom: 8px;
+  letter-spacing: -0.5px;
+}
+.subtitle {
+  color: var(--accent2);
+  font-size: 1.1em;
+  margin-bottom: 32px;
+  padding-bottom: 24px;
+  border-bottom: 1px solid var(--border);
+}
+h2 {
+  font-size: 1.6em;
+  color: #fff;
+  margin-top: 48px;
+  margin-bottom: 16px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--border);
+}
+h3 {
+  font-size: 1.2em;
+  color: var(--accent);
+  margin-top: 32px;
+  margin-bottom: 12px;
+}
+p { margin-bottom: 16px; }
+ul, ol { margin-bottom: 16px; padding-left: 24px; }
+li { margin-bottom: 6px; }
+pre {
+  background: var(--code-bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 20px;
+  overflow-x: auto;
+  margin-bottom: 20px;
+  font-size: 14px;
+  line-height: 1.6;
+}
+code {
+  font-family: "SF Mono", "Fira Code", "JetBrains Mono", monospace;
+  font-size: 0.9em;
+}
+p code, li code {
+  background: var(--inline-code-bg);
+  padding: 2px 6px;
+  border-radius: 4px;
+  color: var(--accent3);
+}
+.kw { color: #c792ea; }
+.fn { color: #82aaff; }
+.str { color: #c3e88d; }
+.cm { color: #546e7a; }
+.num { color: #f78c6c; }
+.op { color: #89ddff; }
+.dec { color: #ffcb6b; }
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-bottom: 20px;
+}
+th {
+  background: var(--sidebar-bg);
+  color: var(--accent);
+  text-align: left;
+  padding: 10px 16px;
+  font-size: 14px;
+  border-bottom: 2px solid var(--border);
+}
+td {
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--border);
+  font-size: 14px;
+}
+.diagram-container {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 32px;
+  margin: 24px 0;
+  text-align: center;
+}
+.diagram-container svg { max-width: 100%; }
+.callout {
+  background: rgba(96,165,250,0.08);
+  border-left: 4px solid var(--accent);
+  padding: 16px 20px;
+  margin: 20px 0;
+  border-radius: 0 8px 8px 0;
+  font-size: 14px;
+}
+.callout strong { color: var(--accent); }
+.prereq {
+  background: rgba(167,139,250,0.08);
+  border-left: 4px solid var(--accent2);
+  padding: 16px 20px;
+  margin: 20px 0;
+  border-radius: 0 8px 8px 0;
+  font-size: 14px;
+}
+.summary-table td:first-child {
+  font-weight: 600;
+  color: var(--accent3);
+  white-space: nowrap;
+}
+@media (max-width: 900px) {
+  .sidebar { display: none; }
+  .content { margin-left: 0; padding: 24px 20px; }
+}
+</style>
+</head>
+<body>
+<nav class="sidebar">
+  <h2>Evaluation</h2>
+  <a href="#why">Why Evaluation Matters</a>
+  <a href="#perplexity">Perplexity</a>
+  <a href="#accuracy">Token Accuracy</a>
+  <a href="#generation">Generation Quality</a>
+  <a href="#benchmarks">Benchmark Datasets</a>
+  <a href="#during-training">Evaluation During Training</a>
+  <a href="#walkthrough">Code Walkthrough</a>
+  <a href="#tests">Running Tests</a>
+  <a href="#exercises">Exercises</a>
+  <a href="#references">References</a>
+  <div style="margin-top:24px; padding-top:16px; border-top:1px solid var(--border);">
+    <a class="chapter-link" href="../01_data_pipeline/tutorial.html">Chapter 01: Data Pipeline</a>
+    <a class="chapter-link" href="../02_data_engineering/tutorial.html">Chapter 02: Data Engineering</a>
+    <a class="chapter-link" href="../03_training_loop/tutorial.html">Chapter 03: Training Loop</a>
+    <a class="chapter-link" href="../04_distributed_training/tutorial.html">Chapter 04: Distributed Training</a>
+    <a class="chapter-link" href="../05_scaling_laws/tutorial.html">Chapter 05: Scaling Laws</a>
+  </div>
+</nav>
+
+<main class="content">
+<h1>Evaluation</h1>
+<p class="subtitle">Module 02 -- Pretraining, Chapter 06</p>
+
+<p>After training a language model, you need to measure how well it works. Evaluation tells you whether your model learned what you intended, how it compares to baselines, and whether it is ready for downstream use.</p>
+
+<h2 id="why">Why Evaluation Matters</h2>
+<p>Training loss tells you how well the model fits the training data, but it does not tell you:</p>
+<ul>
+  <li>Whether the model generalizes to unseen text.</li>
+  <li>Whether the generated output is coherent or useful.</li>
+  <li>How the model compares to other models.</li>
+</ul>
+<p>Good evaluation combines <strong>quantitative metrics</strong> (numbers you can track over time) with <strong>qualitative inspection</strong> (reading the actual output).</p>
+
+<h2 id="perplexity">Perplexity</h2>
+<p>Perplexity is the standard metric for language models. It measures how "surprised" the model is by the test data.</p>
+
+<h3>Definition</h3>
+<p>Perplexity is the exponential of the average cross-entropy loss:</p>
+<pre><code>PPL = exp(L)
+L = <span class="op">-</span>(<span class="num">1</span>/T) * sum_t log P(x_t | x_&lt;t)</code></pre>
+
+<p>Where T is the total number of tokens and P(x_t | x_{&lt;t}) is the model's predicted probability for token x_t given the preceding context.</p>
+
+<h3>Interpretation</h3>
+<ul>
+  <li><strong>Lower is better.</strong> A perplexity of 1 means the model predicts every token with certainty.</li>
+  <li><strong>Random baseline.</strong> For a vocabulary of size V, a uniform random model has perplexity V. A model with PPL=100 on a vocab of 50,000 is much better than random.</li>
+  <li><strong>Rough intuition.</strong> PPL=10 means the model is effectively choosing among 10 plausible next tokens at each position.</li>
+</ul>
+
+<h3>Relationship to Loss</h3>
+<p>Perplexity and cross-entropy loss carry the same information. Perplexity is just the exponential of loss, so:</p>
+
+<div class="diagram-container">
+  <svg viewBox="0 0 500 180" xmlns="http://www.w3.org/2000/svg" width="500">
+    <text x="250" y="22" text-anchor="middle" fill="#e2e8f0" font-size="15" font-weight="bold" font-family="sans-serif">Loss to Perplexity Mapping</text>
+
+    <!-- Loss values -->
+    <rect x="40" y="45" width="100" height="35" rx="6" fill="rgba(247,140,108,0.2)" stroke="#f78c6c" stroke-width="1.5"/>
+    <text x="90" y="68" text-anchor="middle" fill="#f78c6c" font-size="14" font-family="monospace">Loss 4.6</text>
+    <text x="200" y="68" text-anchor="middle" fill="#94a3b8" font-size="18" font-family="sans-serif">&#8594;</text>
+    <rect x="230" y="45" width="100" height="35" rx="6" fill="rgba(96,165,250,0.2)" stroke="#60a5fa" stroke-width="1.5"/>
+    <text x="280" y="68" text-anchor="middle" fill="#60a5fa" font-size="14" font-family="monospace">PPL ~100</text>
+
+    <rect x="40" y="90" width="100" height="35" rx="6" fill="rgba(247,140,108,0.2)" stroke="#f78c6c" stroke-width="1.5"/>
+    <text x="90" y="113" text-anchor="middle" fill="#f78c6c" font-size="14" font-family="monospace">Loss 3.0</text>
+    <text x="200" y="113" text-anchor="middle" fill="#94a3b8" font-size="18" font-family="sans-serif">&#8594;</text>
+    <rect x="230" y="90" width="100" height="35" rx="6" fill="rgba(96,165,250,0.2)" stroke="#60a5fa" stroke-width="1.5"/>
+    <text x="280" y="113" text-anchor="middle" fill="#60a5fa" font-size="14" font-family="monospace">PPL ~20</text>
+
+    <rect x="40" y="135" width="100" height="35" rx="6" fill="rgba(247,140,108,0.2)" stroke="#f78c6c" stroke-width="1.5"/>
+    <text x="90" y="158" text-anchor="middle" fill="#f78c6c" font-size="14" font-family="monospace">Loss 2.3</text>
+    <text x="200" y="158" text-anchor="middle" fill="#94a3b8" font-size="18" font-family="sans-serif">&#8594;</text>
+    <rect x="230" y="135" width="100" height="35" rx="6" fill="rgba(96,165,250,0.2)" stroke="#60a5fa" stroke-width="1.5"/>
+    <text x="280" y="158" text-anchor="middle" fill="#60a5fa" font-size="14" font-family="monospace">PPL ~10</text>
+
+    <text x="380" y="100" text-anchor="middle" fill="#94a3b8" font-size="12" font-family="sans-serif">PPL = exp(loss)</text>
+  </svg>
+</div>
+
+<p>People often report perplexity because it is more intuitive than raw nats of loss.</p>
+
+<h3>Practical Considerations</h3>
+<ul>
+  <li><strong>Ignore padding.</strong> Use <code>ignore_index=-100</code> in cross-entropy to skip padding tokens.</li>
+  <li><strong>Token-level vs. word-level.</strong> Perplexity depends on the tokenizer. A model using BPE with 50K vocab and a model using word-level with 100K vocab have incomparable perplexities.</li>
+  <li><strong>Context length.</strong> Perplexity computed with full context (e.g., 2048 tokens) will be lower than with short context.</li>
+</ul>
+
+<h2 id="accuracy">Token Accuracy</h2>
+<p>Token accuracy measures how often the model's top-1 prediction matches the true next token.</p>
+<pre><code>accuracy = correct_predictions / total_tokens</code></pre>
+
+<h3>When It Is Useful</h3>
+<ul>
+  <li><strong>Training diagnostics.</strong> If accuracy is flat while loss decreases, the model is becoming more confident but not changing its top guess.</li>
+  <li><strong>Comparing models.</strong> Two models with similar loss can have different accuracy distributions.</li>
+</ul>
+
+<h3>Limitations</h3>
+<ul>
+  <li>Accuracy only checks the top-1 prediction. A model that ranks the correct token second is scored the same as one that ranks it last.</li>
+  <li>For large vocabularies, even good models may have low accuracy (10-30% is typical for 50K+ vocab models).</li>
+</ul>
+
+<h2 id="generation">Generation Quality</h2>
+<p>Perplexity and accuracy measure next-token prediction, but users interact with generated text. Generation quality is harder to measure.</p>
+
+<h3>Automatic Metrics</h3>
+<ul>
+  <li><strong>BLEU / ROUGE.</strong> Compare generated text to reference text via n-gram overlap. Common in translation and summarization, less useful for open-ended generation.</li>
+  <li><strong>Distinct-n.</strong> Measures diversity by counting unique n-grams. Low distinct-n indicates repetitive generation.</li>
+  <li><strong>Perplexity of generated text.</strong> Run a separate "judge" model over the output. Lower perplexity from the judge suggests more fluent text.</li>
+</ul>
+
+<h3>Human Evaluation</h3>
+<p>The gold standard. Ask humans to rate:</p>
+<ul>
+  <li><strong>Fluency.</strong> Is the text grammatical and natural?</li>
+  <li><strong>Coherence.</strong> Does the text make sense across sentences?</li>
+  <li><strong>Factuality.</strong> Are the claims accurate?</li>
+  <li><strong>Helpfulness.</strong> Does the text answer the prompt?</li>
+</ul>
+<p>Human evaluation is expensive and slow, but it catches issues that automatic metrics miss.</p>
+
+<h3>Practical Approach</h3>
+<p>For pretraining evaluation, a common workflow is:</p>
+<ol>
+  <li>Track perplexity on a held-out validation set during training.</li>
+  <li>Periodically generate samples and read them manually.</li>
+  <li>If the model passes the "smell test" (coherent, on-topic), it is likely learning well.</li>
+</ol>
+
+<h2 id="benchmarks">Benchmark Datasets</h2>
+<p>Standard datasets allow comparing models across papers.</p>
+
+<div class="diagram-container">
+  <svg viewBox="0 0 650 200" xmlns="http://www.w3.org/2000/svg" width="650">
+    <text x="325" y="22" text-anchor="middle" fill="#e2e8f0" font-size="15" font-weight="bold" font-family="sans-serif">Common Evaluation Benchmarks</text>
+
+    <rect x="20" y="45" width="140" height="70" rx="8" fill="#1e2235" stroke="#60a5fa" stroke-width="1.5"/>
+    <text x="90" y="70" text-anchor="middle" fill="#60a5fa" font-size="13" font-weight="bold" font-family="sans-serif">WikiText-103</text>
+    <text x="90" y="88" text-anchor="middle" fill="#94a3b8" font-size="11" font-family="sans-serif">100M tokens</text>
+    <text x="90" y="105" text-anchor="middle" fill="#94a3b8" font-size="10" font-family="sans-serif">Long-range deps</text>
+
+    <rect x="180" y="45" width="140" height="70" rx="8" fill="#1e2235" stroke="#a78bfa" stroke-width="1.5"/>
+    <text x="250" y="70" text-anchor="middle" fill="#a78bfa" font-size="13" font-weight="bold" font-family="sans-serif">C4</text>
+    <text x="250" y="88" text-anchor="middle" fill="#94a3b8" font-size="11" font-family="sans-serif">~750GB web text</text>
+    <text x="250" y="105" text-anchor="middle" fill="#94a3b8" font-size="10" font-family="sans-serif">General purpose</text>
+
+    <rect x="340" y="45" width="140" height="70" rx="8" fill="#1e2235" stroke="#34d399" stroke-width="1.5"/>
+    <text x="410" y="70" text-anchor="middle" fill="#34d399" font-size="13" font-weight="bold" font-family="sans-serif">The Pile</text>
+    <text x="410" y="88" text-anchor="middle" fill="#94a3b8" font-size="11" font-family="sans-serif">800GB diverse</text>
+    <text x="410" y="105" text-anchor="middle" fill="#94a3b8" font-size="10" font-family="sans-serif">22 sub-corpora</text>
+
+    <rect x="500" y="45" width="130" height="70" rx="8" fill="#1e2235" stroke="#f78c6c" stroke-width="1.5"/>
+    <text x="565" y="70" text-anchor="middle" fill="#f78c6c" font-size="13" font-weight="bold" font-family="sans-serif">LAMBADA</text>
+    <text x="565" y="88" text-anchor="middle" fill="#94a3b8" font-size="11" font-family="sans-serif">Last word pred</text>
+    <text x="565" y="105" text-anchor="middle" fill="#94a3b8" font-size="10" font-family="sans-serif">Long context</text>
+
+    <text x="325" y="155" text-anchor="middle" fill="#94a3b8" font-size="13" font-family="sans-serif">Each tests different aspects: fluency, knowledge, diversity, long-range reasoning</text>
+  </svg>
+</div>
+
+<h3>WikiText-103</h3>
+<ul>
+  <li>100M tokens from Wikipedia.</li>
+  <li>Word-level tokenization (originally), often adapted for BPE.</li>
+  <li>Long-range dependency benchmark (full articles, not shuffled sentences).</li>
+</ul>
+
+<h3>C4 (Colossal Clean Crawled Corpus)</h3>
+<ul>
+  <li>~750GB of cleaned web text.</li>
+  <li>Used by T5 and many subsequent models.</li>
+  <li>Good proxy for general-purpose language modeling.</li>
+</ul>
+
+<h3>The Pile</h3>
+<ul>
+  <li>800GB of diverse text from 22 sub-corpora.</li>
+  <li>Includes books, code, academic papers, StackExchange, etc.</li>
+  <li>Tests broad knowledge, not just Wikipedia-style text.</li>
+</ul>
+
+<h3>LAMBADA</h3>
+<ul>
+  <li>Tests long-range dependency by predicting the last word of a paragraph.</li>
+  <li>Measures whether the model can use distant context.</li>
+</ul>
+
+<h2 id="during-training">Evaluation During Training</h2>
+
+<h3>Validation Loss</h3>
+<p>The most common approach: hold out a portion of data and compute loss on it every N steps.</p>
+<pre><code><span class="cm"># During training loop</span>
+<span class="kw">if</span> step % eval_interval == <span class="num">0</span>:
+    val_loss = evaluate(model, val_loader)
+    <span class="fn">print</span>(<span class="str">f"Step {step}: val_loss={val_loss:.4f}, ppl={math.exp(val_loss):.1f}"</span>)</code></pre>
+
+<h3>Early Stopping</h3>
+<p>If validation loss stops improving, stop training to save compute and prevent overfitting.</p>
+<pre><code>best_val_loss = <span class="fn">float</span>(<span class="str">"inf"</span>)
+patience_counter = <span class="num">0</span>
+
+<span class="kw">for</span> step <span class="kw">in</span> <span class="fn">range</span>(max_steps):
+    train_step(model, batch)
+    <span class="kw">if</span> step % eval_interval == <span class="num">0</span>:
+        val_loss = evaluate(model, val_loader)
+        <span class="kw">if</span> val_loss < best_val_loss:
+            best_val_loss = val_loss
+            patience_counter = <span class="num">0</span>
+            save_checkpoint(model)
+        <span class="kw">else</span>:
+            patience_counter += <span class="num">1</span>
+            <span class="kw">if</span> patience_counter >= patience:
+                <span class="fn">print</span>(<span class="str">"Early stopping"</span>)
+                <span class="kw">break</span></code></pre>
+
+<h3>Checkpoint Selection</h3>
+<p>Save checkpoints periodically and evaluate each on your benchmark suite. Select the checkpoint with the best validation metrics, not the last one.</p>
+
+<div class="diagram-container">
+  <svg viewBox="0 0 600 200" xmlns="http://www.w3.org/2000/svg" width="600">
+    <text x="300" y="22" text-anchor="middle" fill="#e2e8f0" font-size="15" font-weight="bold" font-family="sans-serif">Evaluation During Training</text>
+
+    <!-- Training curve -->
+    <line x1="60" y1="170" x2="560" y2="170" stroke="#546e7a" stroke-width="1"/>
+    <line x1="60" y1="170" x2="60" y2="40" stroke="#546e7a" stroke-width="1"/>
+
+    <!-- Loss curve -->
+    <path d="M 70 60 Q 150 80 220 100 Q 290 115 350 108 Q 400 102 440 110 Q 490 118 540 125" fill="none" stroke="#60a5fa" stroke-width="2.5"/>
+
+    <!-- Best checkpoint marker -->
+    <circle cx="350" cy="108" r="6" fill="#34d399" stroke="#fff" stroke-width="2"/>
+    <text x="350" y="98" text-anchor="middle" fill="#34d399" font-size="11" font-weight="bold" font-family="sans-serif">Best checkpoint</text>
+    <text x="350" y="155" text-anchor="middle" fill="#94a3b8" font-size="10" font-family="sans-serif">Save this, not the last!</text>
+
+    <!-- Last checkpoint -->
+    <circle cx="540" cy="125" r="6" fill="#f78c6c" stroke="#fff" stroke-width="2"/>
+    <text x="540" y="145" text-anchor="middle" fill="#f78c6c" font-size="11" font-family="sans-serif">Last</text>
+
+    <!-- Eval markers -->
+    <line x1="150" y1="170" x2="150" y2="165" stroke="#a78bfa" stroke-width="2"/>
+    <line x1="250" y1="170" x2="250" y2="165" stroke="#a78bfa" stroke-width="2"/>
+    <line x1="350" y1="170" x2="350" y2="165" stroke="#a78bfa" stroke-width="2"/>
+    <line x1="450" y1="170" x2="450" y2="165" stroke="#a78bfa" stroke-width="2"/>
+    <line x1="540" y1="170" x2="540" y2="165" stroke="#a78bfa" stroke-width="2"/>
+    <text x="300" y="190" text-anchor="middle" fill="#a78bfa" font-size="11" font-family="sans-serif">eval_interval checkpoints</text>
+
+    <!-- Axis labels -->
+    <text x="300" y="205" text-anchor="middle" fill="#94a3b8" font-size="12" font-family="sans-serif">Training Steps</text>
+    <text x="25" y="110" text-anchor="middle" fill="#94a3b8" font-size="12" font-family="sans-serif" transform="rotate(-90 25 110)">Val Loss</text>
+  </svg>
+</div>
+
+<h2 id="walkthrough">Code Walkthrough</h2>
+
+<h3><code>perplexity(model, data_loader, device)</code></h3>
+<p>Iterates over a data loader, accumulates cross-entropy loss (sum reduction) and token count, then returns <code>exp(total_loss / total_tokens)</code>. Uses <code>ignore_index=-100</code> to skip padding positions.</p>
+
+<h3><code>compute_token_accuracy(model, data_loader, device)</code></h3>
+<p>Gets the argmax prediction from logits, compares to labels, and masks out positions where <code>labels == -100</code>. Returns the fraction of correct predictions.</p>
+
+<h3><code>generate_samples(model, tokenizer, prompts, ...)</code></h3>
+<p>Encodes each prompt, runs <code>model.generate()</code> with temperature and top-k sampling, decodes the output, and returns a list of generated strings.</p>
+
+<h3><code>Evaluator</code></h3>
+<p>A convenience class that bundles perplexity, accuracy, and optional generation into a single <code>evaluate()</code> call. Returns a dict of metrics.</p>
+
+<h2 id="tests">Running Tests</h2>
+<pre><code>cd 02-pretrain/06_evaluation
+pytest tests.py -v</code></pre>
+
+<h2 id="exercises">Exercises</h2>
+<p>Open <code>exercise.py</code> and implement the TODO items:</p>
+<ol>
+  <li><code>perplexity</code> -- compute loss and convert to perplexity.</li>
+  <li><code>compute_token_accuracy</code> -- count correct predictions.</li>
+  <li><code>Evaluator.evaluate</code> -- orchestrate metrics.</li>
+</ol>
+<p>Check your work with <code>tests.py</code>.</p>
+
+<h2 id="references">References</h2>
+<ul>
+  <li>Chen, M. et al. (2021). "Evaluating Large Language Models Trained on Code" (Codex/HumanEval). arXiv:2107.03374.</li>
+  <li>Merity, S. et al. (2016). "Pointer Sentinel Mixture Models" (WikiText-103). arXiv:1609.07843.</li>
+  <li>Gao, L. et al. (2020). "The Pile: An 800GB Dataset of Diverse Text for Language Modeling." arXiv:2101.00027.</li>
+  <li>Raffel, C. et al. (2019). "Exploring the Limits of Transfer Learning with a Unified Text-to-Text Transformer" (T5/C4). arXiv:1910.10683.</li>
+</ul>
+
+</main>
+</body>
+</html>

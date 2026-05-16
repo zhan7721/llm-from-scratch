@@ -1,0 +1,490 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Reward Hacking - LLM From Scratch</title>
+<style>
+:root {
+  --bg: #0f1117;
+  --bg-card: #161b22;
+  --bg-sidebar: #0d1117;
+  --bg-code: #1a1e28;
+  --text: #e6edf3;
+  --text-muted: #8b949e;
+  --text-dim: #6e7681;
+  --accent: #58a6ff;
+  --accent-green: #3fb950;
+  --accent-orange: #d29922;
+  --accent-red: #f85149;
+  --accent-purple: #bc8cff;
+  --border: #21262d;
+  --border-light: #30363d;
+  --sidebar-w: 280px;
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  line-height: 1.7;
+  font-size: 15px;
+}
+
+.layout {
+  display: flex;
+  min-height: 100vh;
+}
+
+/* Sidebar */
+.sidebar {
+  width: var(--sidebar-w);
+  background: var(--bg-sidebar);
+  border-right: 1px solid var(--border);
+  position: fixed;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  overflow-y: auto;
+  z-index: 100;
+  padding: 20px 0;
+}
+
+.sidebar-header {
+  padding: 10px 20px 20px;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 10px;
+}
+
+.sidebar-header .module-tag {
+  display: inline-block;
+  background: var(--accent);
+  color: #000;
+  font-size: 10px;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 10px;
+  margin-bottom: 8px;
+  letter-spacing: 0.5px;
+}
+
+.sidebar-header h2 {
+  font-size: 16px;
+  color: var(--text);
+  font-weight: 600;
+  line-height: 1.3;
+}
+
+.sidebar-header .chapter-num {
+  color: var(--accent);
+  font-size: 12px;
+  font-weight: 500;
+  margin-bottom: 4px;
+}
+
+.toc-item {
+  display: block;
+  padding: 6px 20px;
+  color: var(--text-muted);
+  text-decoration: none;
+  font-size: 13px;
+  transition: all 0.15s;
+  border-left: 3px solid transparent;
+}
+
+.toc-item:hover {
+  color: var(--text);
+  background: rgba(88, 166, 255, 0.06);
+  border-left-color: var(--accent);
+}
+
+.toc-sub {
+  padding-left: 36px;
+  font-size: 12px;
+}
+
+/* Main content */
+.main {
+  margin-left: var(--sidebar-w);
+  flex: 1;
+  padding: 40px 60px;
+  max-width: 900px;
+}
+
+.main h2 {
+  font-size: 24px;
+  color: var(--text);
+  margin-top: 40px;
+  margin-bottom: 16px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--border);
+  scroll-margin-top: 20px;
+}
+
+.main h3 {
+  font-size: 18px;
+  color: var(--accent);
+  margin-top: 30px;
+  margin-bottom: 12px;
+  scroll-margin-top: 20px;
+}
+
+.main p {
+  margin-bottom: 14px;
+  color: var(--text);
+}
+
+.main blockquote {
+  border-left: 4px solid var(--accent);
+  padding: 12px 20px;
+  margin: 16px 0;
+  background: rgba(88, 166, 255, 0.06);
+  border-radius: 0 6px 6px 0;
+  color: var(--text-muted);
+  font-size: 14px;
+}
+
+.main hr {
+  border: none;
+  border-top: 1px solid var(--border);
+  margin: 30px 0;
+}
+
+.main a {
+  color: var(--accent);
+  text-decoration: none;
+}
+
+.main a:hover {
+  text-decoration: underline;
+}
+
+.main strong {
+  color: var(--text);
+  font-weight: 600;
+}
+
+.main code {
+  font-family: 'SF Mono', 'Fira Code', 'Cascadia Code', 'Consolas', monospace;
+  background: var(--bg-code);
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 13px;
+  color: var(--accent-orange);
+}
+
+.main pre {
+  background: var(--bg-code);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 16px 20px;
+  overflow-x: auto;
+  margin: 16px 0;
+  line-height: 1.5;
+}
+
+.main pre code {
+  background: none;
+  padding: 0;
+  color: var(--text);
+  font-size: 13px;
+  display: block;
+  white-space: pre;
+}
+
+/* Tables */
+.table-wrapper {
+  overflow-x: auto;
+  margin: 16px 0;
+}
+
+.main table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+
+.main table th {
+  background: var(--bg-code);
+  color: var(--accent);
+  text-align: left;
+  padding: 10px 14px;
+  border: 1px solid var(--border);
+  font-weight: 600;
+  font-size: 13px;
+}
+
+.main table td {
+  padding: 8px 14px;
+  border: 1px solid var(--border);
+  color: var(--text);
+}
+
+.main table tr:hover td {
+  background: rgba(88, 166, 255, 0.04);
+}
+
+/* SVG Diagrams */
+.diagram {
+  display: block;
+  max-width: 100%;
+  margin: 20px 0;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 15px;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  .sidebar {
+    display: none;
+  }
+  .main {
+    margin-left: 0;
+    padding: 20px;
+  }
+}
+
+/* Syntax highlighting hints */
+.main pre code .comment { color: #6a737d; }
+.main pre code .keyword { color: #ff7b72; }
+.main pre code .string { color: #a5d6ff; }
+.main pre code .number { color: #79c0ff; }
+</style>
+</head>
+<body>
+<div class="layout">
+  <nav class="sidebar">
+    <div class="sidebar-header">
+      <div class="module-tag">MODULE 04 - RL</div>
+      <div class="chapter-num">Chapter 07</div>
+      <h2>Reward Hacking</h2>
+    </div>
+    <a href="#section-1" class="toc-item ">Prerequisites</a>
+<a href="#section-2" class="toc-item ">Files</a>
+<a href="#section-3" class="toc-item ">What is Reward Hacking?</a>
+<a href="#section-4" class="toc-item toc-sub">The Problem</a>
+<a href="#section-5" class="toc-item toc-sub">Real-World Examples</a>
+<a href="#section-6" class="toc-item ">Architecture</a>
+<a href="#section-7" class="toc-item toc-sub">RewardHackingDetector</a>
+<a href="#section-8" class="toc-item toc-sub">KLConstrainedReward</a>
+<a href="#section-9" class="toc-item toc-sub">RewardEnsemble</a>
+<a href="#section-10" class="toc-item toc-sub">analyze_reward_hacking</a>
+<a href="#section-11" class="toc-item ">Code Walkthrough</a>
+<a href="#section-12" class="toc-item toc-sub">Step 1: Set Up Detection</a>
+<a href="#section-13" class="toc-item toc-sub">Step 2: Monitor During Training</a>
+<a href="#section-14" class="toc-item toc-sub">Step 3: Apply KL Constraint</a>
+<a href="#section-15" class="toc-item toc-sub">Step 4: Use Ensemble for Robustness</a>
+<a href="#section-16" class="toc-item ">Key Concepts</a>
+<a href="#section-17" class="toc-item toc-sub">Reward Divergence</a>
+<a href="#section-18" class="toc-item toc-sub">KL Divergence Penalty</a>
+<a href="#section-19" class="toc-item toc-sub">Ensemble Disagreement</a>
+<a href="#section-20" class="toc-item ">Training Tips</a>
+<a href="#section-21" class="toc-item toc-sub">Choosing Beta</a>
+<a href="#section-22" class="toc-item toc-sub">How Many Ensemble Models?</a>
+<a href="#section-23" class="toc-item toc-sub">When to Use Each Tool</a>
+<a href="#section-24" class="toc-item ">How to Run</a>
+<a href="#section-25" class="toc-item toc-sub">Run Tests</a>
+<a href="#section-26" class="toc-item toc-sub">Run Exercises</a>
+<a href="#section-27" class="toc-item ">Exercises</a>
+<a href="#section-28" class="toc-item toc-sub">Exercise Order</a>
+<a href="#section-29" class="toc-item toc-sub">Tips</a>
+<a href="#section-30" class="toc-item ">Key Takeaways</a>
+<a href="#section-31" class="toc-item ">Further Reading</a>
+
+  </nav>
+  <main class="main">
+    
+<svg viewBox="0 0 700 220" xmlns="http://www.w3.org/2000/svg" class="diagram">
+  <defs>
+    <marker id="arrowhead-rh" markerWidth="10" markerHeight="7" refX="10" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#64b5f6"/>
+    </marker>
+  </defs>
+  <text x="350" y="20" text-anchor="middle" fill="#e0e0e0" font-size="14" font-weight="bold">Reward Hacking Detection and Mitigation</text>
+  <rect x="30" y="40" width="200" height="100" rx="6" fill="#b71c1c" stroke="#ef5350" stroke-width="1.5"/>
+  <text x="130" y="63" text-anchor="middle" fill="#ffcdd2" font-size="12" font-weight="bold">Detection Signals</text>
+  <text x="130" y="83" text-anchor="middle" fill="#ef9a9a" font-size="10">Reward z-score &gt; threshold</text>
+  <text x="130" y="100" text-anchor="middle" fill="#ef9a9a" font-size="10">Low output diversity</text>
+  <text x="130" y="117" text-anchor="middle" fill="#ef9a9a" font-size="10">Abnormal output length</text>
+  <text x="130" y="132" text-anchor="middle" fill="#ef9a9a" font-size="10">Reward-quality correlation</text>
+  <line x1="230" y1="90" x2="290" y2="90" stroke="#64b5f6" stroke-width="2" marker-end="url(#arrowhead-rh)"/>
+  <rect x="290" y="40" width="180" height="100" rx="6" fill="#0d47a1" stroke="#42a5f5" stroke-width="1.5"/>
+  <text x="380" y="63" text-anchor="middle" fill="#e3f2fd" font-size="12" font-weight="bold">KL Constraint</text>
+  <text x="380" y="83" text-anchor="middle" fill="#90caf9" font-size="10">eff_reward = reward</text>
+  <text x="380" y="100" text-anchor="middle" fill="#90caf9" font-size="10">  - beta * KL(pi || pi_ref)</text>
+  <text x="380" y="125" text-anchor="middle" fill="#bbdefb" font-size="10">Controls policy leash length</text>
+  <line x1="470" y1="90" x2="530" y2="90" stroke="#64b5f6" stroke-width="2" marker-end="url(#arrowhead-rh)"/>
+  <rect x="530" y="40" width="140" height="100" rx="6" fill="#004d40" stroke="#26a69a" stroke-width="1.5"/>
+  <text x="600" y="63" text-anchor="middle" fill="#e0f2f1" font-size="12" font-weight="bold">Ensemble</text>
+  <text x="600" y="83" text-anchor="middle" fill="#80cbc4" font-size="10">Avg N reward models</text>
+  <text x="600" y="100" text-anchor="middle" fill="#80cbc4" font-size="10">std = disagreement</text>
+  <text x="600" y="125" text-anchor="middle" fill="#b2dfdb" font-size="10">Harder to exploit all</text>
+  <rect x="100" y="160" width="500" height="45" rx="6" fill="#1b5e20" stroke="#66bb6a" stroke-width="1.5"/>
+  <text x="350" y="180" text-anchor="middle" fill="#a5d6a7" font-size="12" font-weight="bold">Goodhart's Law: "When a measure becomes a target, it ceases to be a good measure."</text>
+  <text x="350" y="198" text-anchor="middle" fill="#c8e6c9" font-size="10">Monitor always. Adjust beta if hacking detected.</text>
+</svg>
+    <blockquote><p>**Module 04 -- Reinforcement Learning, Chapter 07**</p></blockquote>
+<p>When we optimize a language model against a reward model, the model may learn to exploit imperfections in the reward signal -- achieving high scores without genuinely improving quality. This is called <strong>reward hacking</strong> (or reward overoptimization). This chapter implements detection and mitigation tools.</p>
+<hr>
+<h2 id="section-1">Prerequisites</h2>
+<p>- Reward Model basics (Module 04, Chapter 01) - PyTorch nn.Module - Basic understanding of RLHF training loops</p>
+<h2 id="section-2">Files</h2>
+<div class="table-wrapper"><table>
+<thead><tr>
+<th>File</th>
+<th>Purpose</th>
+</tr></thead>
+<tbody>
+<tr>
+<td>`reward_hacking.py`</td>
+<td>Core implementation: RewardHackingDetector, KLConstrainedReward, RewardEnsemble, analyze_reward_hacking</td>
+</tr>
+<tr>
+<td>`exercise.py`</td>
+<td>Fill-in-the-blank exercises to reinforce understanding</td>
+</tr>
+<tr>
+<td>`solution.py`</td>
+<td>Reference solutions for the exercises</td>
+</tr>
+<tr>
+<td>`tests.py`</td>
+<td>pytest tests for correctness</td>
+</tr>
+</tbody></table></div>
+<hr>
+<h2 id="section-3">What is Reward Hacking?</h2>
+<h3 id="section-4">The Problem</h3>
+<p>In RLHF, we train a policy to maximize the reward model's score. But the reward model is an imperfect proxy for human preferences. As we optimize harder against it, the policy may find "shortcuts" that score well without corresponding to real quality:</p>
+<p>- <strong>Length exploitation</strong>: Longer outputs get higher scores, so the model rambles - <strong>Repetition exploitation</strong>: Certain phrases score well, so the model repeats them - <strong>Style over substance</strong>: Outputs look superficially good but lack coherence</p>
+<p>This is analogous to Goodhart's Law: "When a measure becomes a target, it ceases to be a good measure."</p>
+<h3 id="section-5">Real-World Examples</h3>
+<pre><code>Reward model trained to prefer helpful responses:
+  - Policy learns to add "I'd be happy to help!" at the start of every response
+    (high reward, no actual helpfulness improvement)
+  - Policy learns to produce very long responses with filler content
+    (length correlates with reward in training data)
+  - Policy learns specific phrases that trigger high reward scores
+    (template exploitation)</code></pre>
+<hr>
+<h2 id="section-6">Architecture</h2>
+<h3 id="section-7">RewardHackingDetector</h3>
+<p>Monitors diagnostic signals during training to detect reward hacking early:</p>
+<pre><code class="language-python">detector = RewardHackingDetector(reward_threshold=2.0, diversity_threshold=0.3)
+detector.set_baseline(reference_rewards)
+
+# During training...
+result = detector.detect(current_rewards, generated_tokens, expected_length=50)
+if result["is_hacking"]:
+    print("Warning: reward hacking detected!")</code></pre>
+<p><strong>Signals monitored:</strong> - <strong>Reward divergence</strong>: Z-score of current rewards vs baseline (high = suspicious) - <strong>Output diversity</strong>: Unique-token ratio (low = repetitive = suspicious) - <strong>Length anomaly</strong>: How far output lengths deviate from expected (extreme = suspicious)</p>
+<h3 id="section-8">KLConstrainedReward</h3>
+<p>Adds a KL penalty to keep the policy near the reference:</p>
+<pre><code class="language-python">wrapper = KLConstrainedReward(reward_model, beta=0.1)
+result = wrapper.forward(input_ids, policy_logits, reference_logits)
+effective_reward = result["effective_reward"]
+# effective_reward = reward - beta * KL(policy || reference)</code></pre>
+<p>The KL penalty prevents the policy from straying too far from the reference distribution, which limits its ability to exploit reward model weaknesses.</p>
+<h3 id="section-9">RewardEnsemble</h3>
+<p>Averages multiple reward models for robustness:</p>
+<pre><code class="language-python">ensemble = RewardEnsemble([reward_model_1, reward_model_2, reward_model_3])
+result = ensemble.forward(input_ids)
+mean_reward = result["mean_reward"]  # Average across models
+std_reward = result["std_reward"]    # Disagreement signal</code></pre>
+<p>If one reward model has a blind spot, the others can compensate. The standard deviation (disagreement) also serves as an uncertainty signal.</p>
+<h3 id="section-10">analyze_reward_hacking</h3>
+<p>Diagnostic function comparing reward vs quality:</p>
+<pre><code class="language-python">result = analyze_reward_hacking(reward_model, quality_function, input_ids)
+print(f"Correlation: {result['correlation']:.3f}")
+print(f"Reward inflation: {result['reward_inflation']:.3f}")
+print(f"Is hacking: {result['is_hacking']}")</code></pre>
+<hr>
+<h2 id="section-11">Code Walkthrough</h2>
+<h3 id="section-12">Step 1: Set Up Detection</h3>
+<pre><code class="language-python">detector = RewardHackingDetector()
+detector.set_baseline(reference_rewards)  # Rewards from initial policy</code></pre>
+<p>The detector needs a baseline to compare against. This is typically the reward distribution from the initial (unoptimized) policy.</p>
+<h3 id="section-13">Step 2: Monitor During Training</h3>
+<pre><code class="language-python">signals = detector.detect(current_rewards, generated_tokens)
+if signals["is_hacking"]:
+    # Reduce learning rate, increase KL penalty, or stop training
+    beta *= 1.5  # Increase KL coefficient</code></pre>
+<h3 id="section-14">Step 3: Apply KL Constraint</h3>
+<pre><code class="language-python">kl_wrapper = KLConstrainedReward(reward_model, beta=0.1)
+result = kl_wrapper.forward(input_ids, policy_logits, ref_logits)
+loss = -result["effective_reward"].mean()  # Maximize effective reward</code></pre>
+<h3 id="section-15">Step 4: Use Ensemble for Robustness</h3>
+<pre><code class="language-python">ensemble = RewardEnsemble([rm1, rm2, rm3])
+scores = ensemble.score(input_ids)  # More robust than any single model</code></pre>
+<hr>
+<h2 id="section-16">Key Concepts</h2>
+<h3 id="section-17">Reward Divergence</h3>
+<p>As the policy is optimized, its reward scores tend to increase. But at some point, the increase becomes "too good to be true" -- the policy is exploiting rather than genuinely improving. The z-score measures how many standard deviations the current mean reward has drifted from the baseline.</p>
+<h3 id="section-18">KL Divergence Penalty</h3>
+<p>The KL divergence KL(pi || pi_ref) measures how different the current policy is from the reference. By adding <code>beta * KL</code> to the loss, we create a "leash" that prevents the policy from moving too far. The <code>beta</code> parameter controls the leash length:</p>
+<p>- <code>beta</code> too low: Policy can exploit the reward model freely - <code>beta</code> too high: Policy cannot improve at all (stuck at reference) - <code>beta</code> just right: Policy improves while staying grounded</p>
+<h3 id="section-19">Ensemble Disagreement</h3>
+<p>When multiple reward models agree, we can be more confident in the score. When they disagree, it signals uncertainty -- possibly because the input is adversarial or out-of-distribution. The standard deviation across models is a natural uncertainty measure.</p>
+<hr>
+<h2 id="section-20">Training Tips</h2>
+<h3 id="section-21">Choosing Beta</h3>
+<p>Start with <code>beta = 0.01</code> to <code>0.1</code> and adjust based on the detector signals: - If hacking is detected, increase beta - If improvement stalls, decrease beta - Monitor the KL penalty term -- it should be small but non-zero</p>
+<h3 id="section-22">How Many Ensemble Models?</h3>
+<p>- 3-5 models is a practical sweet spot - Models should be independently trained (different seeds, data subsets, or architectures) - More models = better robustness but higher compute cost</p>
+<h3 id="section-23">When to Use Each Tool</h3>
+<div class="table-wrapper"><table>
+<thead><tr>
+<th>Tool</th>
+<th>When to Use</th>
+</tr></thead>
+<tbody>
+<tr>
+<td>RewardHackingDetector</td>
+<td>Always -- it is cheap and provides early warning</td>
+</tr>
+<tr>
+<td>KLConstrainedReward</td>
+<td>During RL training to prevent overoptimization</td>
+</tr>
+<tr>
+<td>RewardEnsemble</td>
+<td>When you have multiple reward models available</td>
+</tr>
+<tr>
+<td>analyze_reward_hacking</td>
+<td>As a diagnostic after training or during evaluation</td>
+</tr>
+</tbody></table></div>
+<hr>
+<h2 id="section-24">How to Run</h2>
+<h3 id="section-25">Run Tests</h3>
+<pre><code class="language-bash">cd /path/to/llm-from-scratch
+pytest 04-rl/07_reward_hacking/tests.py -v</code></pre>
+<h3 id="section-26">Run Exercises</h3>
+<p>Open <code>exercise.py</code> and fill in the <code>TODO</code> sections. Then verify:</p>
+<pre><code class="language-bash">pytest 04-rl/07_reward_hacking/tests.py -v</code></pre>
+<hr>
+<h2 id="section-27">Exercises</h2>
+<p>Open <code>exercise.py</code> to practice implementing reward hacking components.</p>
+<h3 id="section-28">Exercise Order</h3>
+<p>1. <strong><code>RewardHackingDetectorExercise.compute_reward_divergence</code></strong> -- Z-score comparison to baseline 2. <strong><code>RewardHackingDetectorExercise.compute_output_diversity</code></strong> -- Unique-token ratio 3. <strong><code>RewardHackingDetectorExercise.compute_length_anomaly</code></strong> -- Length deviation detection 4. <strong><code>RewardHackingDetectorExercise.detect</code></strong> -- Combine all signals 5. <strong><code>KLConstrainedRewardExercise.compute_kl_penalty</code></strong> -- KL divergence from logits 6. <strong><code>KLConstrainedRewardExercise.forward</code></strong> -- Combine reward and KL penalty 7. <strong><code>RewardEnsembleExercise</code></strong> -- Average multiple reward models 8. <strong><code>analyze_reward_hacking_exercise</code></strong> -- Correlation-based diagnostic</p>
+<h3 id="section-29">Tips</h3>
+<p>- Start with <code>compute_reward_divergence</code> -- it is a simple z-score computation. - For <code>compute_output_diversity</code>, <code>torch.unique()</code> is your friend. - The KL penalty uses <code>F.log_softmax</code> and <code>F.softmax</code> for numerical stability. - The ensemble is straightforward: loop, stack, mean/std.</p>
+<hr>
+<h2 id="section-30">Key Takeaways</h2>
+<p>1. <strong>Reward hacking is inevitable under strong optimization.</strong> The more you optimize against an imperfect reward model, the more the policy will exploit its weaknesses.</p>
+<p>2. <strong>KL constraints are the primary defense.</strong> By penalizing divergence from a reference policy, we limit the policy's ability to find and exploit reward model blind spots.</p>
+<p>3. <strong>Ensembles reduce single-model vulnerabilities.</strong> Averaging multiple reward models makes it harder for the policy to find exploits that work across all models.</p>
+<p>4. <strong>Detection is better than cure.</strong> Monitor signals like reward divergence and output diversity during training. Early detection allows you to adjust before the policy degenerates.</p>
+<p>5. <strong>The correlation between reward and quality is the key metric.</strong> If reward goes up but quality does not, you have reward hacking.</p>
+<hr>
+<h2 id="section-31">Further Reading</h2>
+<p>- <a href="https://arxiv.org/abs/2210.10760">Scaling Laws for Reward Model Overoptimization (Gao et al., 2023)</a> -- How reward hacking scales with optimization strength - <a href="https://arxiv.org/abs/2203.02155">Training Language Models to Follow Instructions with Human Feedback (Ouyang et al., 2022)</a> -- InstructGPT, discusses KL constraints in RLHF - <a href="https://arxiv.org/abs/1606.06565">Concrete Problems in AI Safety (Amodei et al., 2016)</a> -- Reward hacking as a safety concern - <a href="https://arxiv.org/abs/2310.02743">Reward Model Ensembles (Coste et al., 2023)</a> -- Using ensembles for more robust reward estimation</p>
+  </main>
+</div>
+</body>
+</html>

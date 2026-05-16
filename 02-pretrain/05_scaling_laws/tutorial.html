@@ -1,0 +1,468 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Scaling Laws - LLM Pretraining</title>
+<style>
+:root {
+  --bg: #0f1117;
+  --bg-secondary: #161822;
+  --sidebar-bg: #1a1d2e;
+  --text: #e2e8f0;
+  --text-muted: #94a3b8;
+  --accent: #60a5fa;
+  --accent2: #a78bfa;
+  --accent3: #34d399;
+  --border: #2d3148;
+  --code-bg: #1e2235;
+  --inline-code-bg: #2a2f45;
+}
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  line-height: 1.7;
+  display: flex;
+}
+.sidebar {
+  width: 280px;
+  background: var(--sidebar-bg);
+  border-right: 1px solid var(--border);
+  padding: 24px 0;
+  position: fixed;
+  top: 0; left: 0; bottom: 0;
+  overflow-y: auto;
+  z-index: 100;
+}
+.sidebar h2 {
+  color: var(--accent);
+  font-size: 14px;
+  text-transform: uppercase;
+  letter-spacing: 1.5px;
+  padding: 0 20px 16px;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 12px;
+}
+.sidebar a {
+  display: block;
+  color: var(--text-muted);
+  text-decoration: none;
+  padding: 8px 20px;
+  font-size: 14px;
+  transition: all 0.2s;
+  border-left: 3px solid transparent;
+}
+.sidebar a:hover, .sidebar a.active {
+  color: var(--accent);
+  background: rgba(96,165,250,0.08);
+  border-left-color: var(--accent);
+}
+.sidebar .chapter-link {
+  color: var(--accent2);
+  font-weight: 600;
+  margin-top: 8px;
+}
+.content {
+  margin-left: 280px;
+  flex: 1;
+  padding: 48px 64px;
+  max-width: 960px;
+}
+h1 {
+  font-size: 2.4em;
+  color: #fff;
+  margin-bottom: 8px;
+  letter-spacing: -0.5px;
+}
+.subtitle {
+  color: var(--accent2);
+  font-size: 1.1em;
+  margin-bottom: 32px;
+  padding-bottom: 24px;
+  border-bottom: 1px solid var(--border);
+}
+h2 {
+  font-size: 1.6em;
+  color: #fff;
+  margin-top: 48px;
+  margin-bottom: 16px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--border);
+}
+h3 {
+  font-size: 1.2em;
+  color: var(--accent);
+  margin-top: 32px;
+  margin-bottom: 12px;
+}
+p { margin-bottom: 16px; }
+ul, ol { margin-bottom: 16px; padding-left: 24px; }
+li { margin-bottom: 6px; }
+pre {
+  background: var(--code-bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 20px;
+  overflow-x: auto;
+  margin-bottom: 20px;
+  font-size: 14px;
+  line-height: 1.6;
+}
+code {
+  font-family: "SF Mono", "Fira Code", "JetBrains Mono", monospace;
+  font-size: 0.9em;
+}
+p code, li code {
+  background: var(--inline-code-bg);
+  padding: 2px 6px;
+  border-radius: 4px;
+  color: var(--accent3);
+}
+.kw { color: #c792ea; }
+.fn { color: #82aaff; }
+.str { color: #c3e88d; }
+.cm { color: #546e7a; }
+.num { color: #f78c6c; }
+.op { color: #89ddff; }
+.dec { color: #ffcb6b; }
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-bottom: 20px;
+}
+th {
+  background: var(--sidebar-bg);
+  color: var(--accent);
+  text-align: left;
+  padding: 10px 16px;
+  font-size: 14px;
+  border-bottom: 2px solid var(--border);
+}
+td {
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--border);
+  font-size: 14px;
+}
+.diagram-container {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 32px;
+  margin: 24px 0;
+  text-align: center;
+}
+.diagram-container svg { max-width: 100%; }
+.callout {
+  background: rgba(96,165,250,0.08);
+  border-left: 4px solid var(--accent);
+  padding: 16px 20px;
+  margin: 20px 0;
+  border-radius: 0 8px 8px 0;
+  font-size: 14px;
+}
+.callout strong { color: var(--accent); }
+.prereq {
+  background: rgba(167,139,250,0.08);
+  border-left: 4px solid var(--accent2);
+  padding: 16px 20px;
+  margin: 20px 0;
+  border-radius: 0 8px 8px 0;
+  font-size: 14px;
+}
+.summary-table td:first-child {
+  font-weight: 600;
+  color: var(--accent3);
+  white-space: nowrap;
+}
+@media (max-width: 900px) {
+  .sidebar { display: none; }
+  .content { margin-left: 0; padding: 24px 20px; }
+}
+</style>
+</head>
+<body>
+<nav class="sidebar">
+  <h2>Scaling Laws</h2>
+  <a href="#why">Why Scaling Laws Matter</a>
+  <a href="#power-law">The Power-Law Form</a>
+  <a href="#compute">Compute Estimation</a>
+  <a href="#kaplan">Kaplan et al. (2020)</a>
+  <a href="#chinchilla">Chinchilla (2022)</a>
+  <a href="#practical">Practical Use</a>
+  <a href="#limitations">Limitations</a>
+  <a href="#walkthrough">Code Walkthrough</a>
+  <a href="#tests">Running Tests</a>
+  <a href="#exercises">Exercises</a>
+  <a href="#references">References</a>
+  <div style="margin-top:24px; padding-top:16px; border-top:1px solid var(--border);">
+    <a class="chapter-link" href="../01_data_pipeline/tutorial.html">Chapter 01: Data Pipeline</a>
+    <a class="chapter-link" href="../02_data_engineering/tutorial.html">Chapter 02: Data Engineering</a>
+    <a class="chapter-link" href="../03_training_loop/tutorial.html">Chapter 03: Training Loop</a>
+    <a class="chapter-link" href="../04_distributed_training/tutorial.html">Chapter 04: Distributed Training</a>
+    <a class="chapter-link" href="../06_evaluation/tutorial.html">Chapter 06: Evaluation</a>
+  </div>
+</nav>
+
+<main class="content">
+<h1>Scaling Laws</h1>
+<p class="subtitle">Module 02 -- Pretraining, Chapter 05</p>
+
+<p>Scaling laws describe how language model performance (measured as test loss) improves predictably as you increase model size, training data, or compute. They let you <strong>forecast</strong> the result of an expensive training run before spending the money.</p>
+
+<h2 id="why">Why Scaling Laws Matter</h2>
+<p>Before scaling laws, choosing model size and training duration was largely guesswork. Kaplan et al. (2020) showed that loss follows smooth power laws across several orders of magnitude. This means:</p>
+<ul>
+  <li>You can train small models, fit a curve, and predict large-model performance.</li>
+  <li>You can decide how to split a fixed compute budget between parameters and data.</li>
+  <li>You can set realistic expectations for a training run before it starts.</li>
+</ul>
+
+<h2 id="power-law">The Power-Law Form</h2>
+<p>Kaplan et al. observed that cross-entropy loss follows:</p>
+<pre><code>L(x) = a * x^(<span class="op">-</span>alpha) + L_inf</code></pre>
+
+<p>Where:</p>
+<ul>
+  <li><code>x</code> is the scaling variable (parameter count N or token count D).</li>
+  <li><code>a</code> is a constant that depends on the task.</li>
+  <li><code>alpha</code> is the scaling exponent (how fast loss drops with scale).</li>
+  <li><code>L_inf</code> is the irreducible loss floor (~1.5 nats for natural language).</li>
+</ul>
+<p>The key insight: plotting <code>log(L - L_inf)</code> against <code>log(x)</code> gives a straight line. This makes fitting and extrapolation straightforward.</p>
+
+<div class="diagram-container">
+  <svg viewBox="0 0 600 280" xmlns="http://www.w3.org/2000/svg" width="600">
+    <text x="300" y="22" text-anchor="middle" fill="#e2e8f0" font-size="15" font-weight="bold" font-family="sans-serif">Scaling Law: Loss vs Model Size (log-log)</text>
+
+    <!-- Axes -->
+    <line x1="80" y1="240" x2="560" y2="240" stroke="#546e7a" stroke-width="1.5"/>
+    <line x1="80" y1="240" x2="80" y2="40" stroke="#546e7a" stroke-width="1.5"/>
+
+    <!-- Y axis label -->
+    <text x="30" y="140" text-anchor="middle" fill="#94a3b8" font-size="12" font-family="sans-serif" transform="rotate(-90 30 140)">Loss (log scale)</text>
+    <!-- X axis label -->
+    <text x="320" y="270" text-anchor="middle" fill="#94a3b8" font-size="12" font-family="sans-serif">Parameters (log scale)</text>
+
+    <!-- L_inf line -->
+    <line x1="80" y1="230" x2="560" y2="230" stroke="#f78c6c" stroke-width="1" stroke-dasharray="6"/>
+    <text x="565" y="233" fill="#f78c6c" font-size="11" font-family="sans-serif">L_inf</text>
+
+    <!-- Power law curve -->
+    <path d="M 100 80 C 180 100 300 140 420 170 Q 500 190 550 200" fill="none" stroke="#60a5fa" stroke-width="3"/>
+
+    <!-- Data points -->
+    <circle cx="120" cy="85" r="5" fill="#60a5fa"/>
+    <circle cx="200" cy="105" r="5" fill="#60a5fa"/>
+    <circle cx="300" cy="140" r="5" fill="#60a5fa"/>
+    <circle cx="420" cy="170" r="5" fill="#60a5fa"/>
+    <circle cx="520" cy="195" r="5" fill="#60a5fa"/>
+
+    <!-- Extrapolation -->
+    <path d="M 520 195 L 555 205" fill="none" stroke="#60a5fa" stroke-width="2" stroke-dasharray="4"/>
+    <circle cx="555" cy="205" r="5" fill="none" stroke="#34d399" stroke-width="2"/>
+    <text x="555" y="220" text-anchor="middle" fill="#34d399" font-size="10" font-family="sans-serif">predicted</text>
+
+    <!-- Grid -->
+    <line x1="80" y1="100" x2="560" y2="100" stroke="#2d3148" stroke-width="0.5" stroke-dasharray="4"/>
+    <line x1="80" y1="160" x2="560" y2="160" stroke="#2d3148" stroke-width="0.5" stroke-dasharray="4"/>
+    <line x1="200" y1="40" x2="200" y2="240" stroke="#2d3148" stroke-width="0.5" stroke-dasharray="4"/>
+    <line x1="350" y1="40" x2="350" y2="240" stroke="#2d3148" stroke-width="0.5" stroke-dasharray="4"/>
+    <line x1="500" y1="40" x2="500" y2="240" stroke="#2d3148" stroke-width="0.5" stroke-dasharray="4"/>
+
+    <!-- Tick labels -->
+    <text x="100" y="255" text-anchor="middle" fill="#94a3b8" font-size="10" font-family="monospace">10^6</text>
+    <text x="200" y="255" text-anchor="middle" fill="#94a3b8" font-size="10" font-family="monospace">10^7</text>
+    <text x="350" y="255" text-anchor="middle" fill="#94a3b8" font-size="10" font-family="monospace">10^8</text>
+    <text x="500" y="255" text-anchor="middle" fill="#94a3b8" font-size="10" font-family="monospace">10^9</text>
+  </svg>
+</div>
+
+<h3>Fitting in Practice</h3>
+<pre><code><span class="kw">import</span> numpy <span class="kw">as</span> np
+
+<span class="cm"># Observed data: (params, loss)</span>
+x = np.array([<span class="num">1e6</span>, <span class="num">1e7</span>, <span class="num">1e8</span>, <span class="num">1e9</span>])
+loss = np.array([<span class="num">3.5</span>, <span class="num">3.0</span>, <span class="num">2.7</span>, <span class="num">2.5</span>])
+l_inf = <span class="num">1.5</span>
+
+adjusted = loss - l_inf
+log_x = np.log(x)
+log_y = np.log(adjusted)
+
+coeffs = np.polyfit(log_x, log_y, <span class="num">1</span>)
+alpha = <span class="op">-</span>coeffs[<span class="num">0</span>]
+a = np.exp(coeffs[<span class="num">1</span>])</code></pre>
+
+<h2 id="compute">Compute Estimation</h2>
+<p>Training compute is approximately:</p>
+<pre><code>C &#8776; <span class="num">6</span> * N * D</code></pre>
+
+<p>Where:</p>
+<ul>
+  <li>N = number of parameters</li>
+  <li>D = number of training tokens</li>
+  <li>The factor of 6 accounts for forward pass (2), backward pass (4).</li>
+</ul>
+<p>This is a simplification. Actual FLOPs depend on architecture details, but this approximation is widely used for planning.</p>
+
+<h2 id="kaplan">Kaplan et al. (2020)</h2>
+<p>The original OpenAI paper found three separate power laws:</p>
+<ol>
+  <li><strong>L(N)</strong>: Loss vs. parameter count (with data scaled proportionally).</li>
+  <li><strong>L(D)</strong>: Loss vs. dataset size (with model scaled proportionally).</li>
+  <li><strong>L(C)</strong>: Loss vs. compute budget (with optimal allocation).</li>
+</ol>
+<p>Key findings:</p>
+<ul>
+  <li>Performance improves smoothly with each factor.</li>
+  <li><strong>N matters more than D</strong>: Kaplan recommended allocating more compute to larger models rather than more training data.</li>
+  <li>Optimal scaling: N_opt &#8733; C^0.73, D_opt &#8733; C^0.27.</li>
+</ul>
+<p>This led to the strategy of training very large models on relatively modest datasets (the GPT-3 approach).</p>
+
+<h2 id="chinchilla">Chinchilla (Hoffmann et al. 2022)</h2>
+<p>DeepMind's Chinchilla paper revisited the scaling laws with more careful experiments and reached a different conclusion:</p>
+<ul>
+  <li><strong>Data matters more than Kaplan thought.</strong></li>
+  <li>The optimal ratio is roughly <strong>D &#8776; 20 * N</strong> (20 tokens per parameter).</li>
+  <li>For a fixed compute budget, a smaller model trained on more data outperforms a larger model trained on fewer tokens.</li>
+</ul>
+
+<h3>Chinchilla Allocation</h3>
+<p>Given a compute budget C, the optimal allocation is:</p>
+<pre><code>C = <span class="num">6</span> * N * D     <span class="cm">(compute constraint)</span>
+D = <span class="num">20</span> * N        <span class="cm">(Chinchilla ratio)</span>
+
+Solving: N = sqrt(C / (<span class="num">6</span> * <span class="num">20</span>))
+         D = <span class="num">20</span> * N</code></pre>
+
+<p>Example: with 1e24 FLOPs:</p>
+<ul>
+  <li>N_opt &#8776; 9.1B parameters</li>
+  <li>D_opt &#8776; 183B tokens</li>
+</ul>
+
+<div class="diagram-container">
+  <svg viewBox="0 0 600 250" xmlns="http://www.w3.org/2000/svg" width="600">
+    <text x="300" y="22" text-anchor="middle" fill="#e2e8f0" font-size="15" font-weight="bold" font-family="sans-serif">Kaplan vs Chinchilla: Compute Allocation</text>
+
+    <!-- Axes -->
+    <line x1="80" y1="210" x2="560" y2="210" stroke="#546e7a" stroke-width="1.5"/>
+    <line x1="80" y1="210" x2="80" y2="40" stroke="#546e7a" stroke-width="1.5"/>
+
+    <text x="30" y="125" text-anchor="middle" fill="#94a3b8" font-size="12" font-family="sans-serif" transform="rotate(-90 30 125)">Tokens (D)</text>
+    <text x="320" y="240" text-anchor="middle" fill="#94a3b8" font-size="12" font-family="sans-serif">Parameters (N)</text>
+
+    <!-- Compute budget constraint curve (hyperbola C = 6ND) -->
+    <path d="M 100 190 Q 150 120 250 80 Q 350 60 500 50" fill="none" stroke="#546e7a" stroke-width="1.5" stroke-dasharray="4"/>
+    <text x="480" y="45" fill="#546e7a" font-size="11" font-family="sans-serif">C = 6ND (fixed)</text>
+
+    <!-- Kaplan allocation point -->
+    <circle cx="400" cy="100" r="8" fill="rgba(167,139,250,0.3)" stroke="#a78bfa" stroke-width="2"/>
+    <text x="400" y="120" text-anchor="middle" fill="#a78bfa" font-size="12" font-weight="bold" font-family="sans-serif">Kaplan</text>
+    <text x="400" y="135" text-anchor="middle" fill="#a78bfa" font-size="10" font-family="sans-serif">Big model, less data</text>
+
+    <!-- Chinchilla allocation point -->
+    <circle cx="220" cy="90" r="8" fill="rgba(52,211,153,0.3)" stroke="#34d399" stroke-width="2"/>
+    <text x="220" y="75" text-anchor="middle" fill="#34d399" font-size="12" font-weight="bold" font-family="sans-serif">Chinchilla</text>
+    <text x="220" y="60" text-anchor="middle" fill="#34d399" font-size="10" font-family="sans-serif">Smaller model, more data</text>
+
+    <!-- Arrow showing the shift -->
+    <line x1="385" y1="100" x2="240" y2="90" stroke="#ffcb6b" stroke-width="2" marker-end="url(#arr5)"/>
+    <defs>
+      <marker id="arr5" markerWidth="10" markerHeight="7" refX="10" refY="3.5" orient="auto">
+        <polygon points="0 0, 10 3.5, 0 7" fill="#ffcb6b"/>
+      </marker>
+    </defs>
+
+    <!-- Legend -->
+    <rect x="420" y="150" width="140" height="50" rx="6" fill="#1e2235" stroke="#2d3148" stroke-width="1"/>
+    <text x="430" y="168" fill="#94a3b8" font-size="11" font-family="sans-serif">Same compute budget</text>
+    <text x="430" y="188" fill="#ffcb6b" font-size="11" font-family="sans-serif">Chinchilla wins</text>
+  </svg>
+</div>
+
+<h3>Impact</h3>
+<p>Chinchilla changed industry practice. Models like LLaMA were trained with the Chinchilla ratio in mind, using far more tokens than GPT-3 for their size. The result: smaller models that match or beat larger predecessors.</p>
+
+<h2 id="practical">Practical Use</h2>
+
+<h3>Planning a Training Run</h3>
+<ol>
+  <li><strong>Estimate your compute budget</strong> in FLOPs (GPU count * GPU FLOPS * time).</li>
+  <li><strong>Use Chinchilla allocation</strong> to find optimal N and D.</li>
+  <li><strong>Fit scaling law</strong> from small pilot runs to predict final loss.</li>
+  <li><strong>Decide if it's worth it</strong>: compare predicted loss to your target.</li>
+</ol>
+
+<h3>Example: Plan a 7B Model</h3>
+<pre><code>Target: 7B parameters
+Chinchilla ratio: D = <span class="num">20</span> * 7B = 140B tokens
+Compute: C = <span class="num">6</span> * 7e9 * 140e9 = 5.88e21 FLOPs</code></pre>
+
+<p>That's roughly 5.88 zettaFLOPs, or about 800 GPU-days on A100s.</p>
+
+<h3>Setting Expectations</h3>
+<p>If you've trained models at 100M, 300M, and 1B parameters, you can fit a scaling law and predict what a 7B model will achieve. This helps you:</p>
+<ul>
+  <li>Decide whether to scale up at all.</li>
+  <li>Choose between spending compute on a bigger model vs. more data.</li>
+  <li>Report expected performance to stakeholders before training.</li>
+</ul>
+
+<h2 id="limitations">Limitations</h2>
+
+<h3>Emergent Abilities</h3>
+<p>Some capabilities appear suddenly at certain scales (in-context learning, chain-of-thought reasoning). Scaling laws predict <strong>average loss</strong>, not specific capabilities. A model can have lower loss but still fail at tasks that require a minimum scale.</p>
+
+<h3>Diminishing Returns</h3>
+<p>The power-law exponent alpha is typically 0.05--0.1 for loss vs. compute. This means you need roughly <strong>10x more compute</strong> to reduce loss by 5--10%. Beyond a certain point, the cost may not justify the improvement.</p>
+
+<h3>Architecture Dependence</h3>
+<p>Scaling laws are measured for specific architectures. A transformer scaling law does not directly apply to Mamba, mixture-of-experts, or other architectures. Each family needs its own measurements.</p>
+
+<h3>Training Details Matter</h3>
+<p>Hyperparameter tuning, data quality, and training stability all affect the actual loss. Scaling laws give you a <strong>ceiling</strong> (what's achievable with optimal settings), not a guarantee.</p>
+
+<h2 id="walkthrough">Code Walkthrough</h2>
+
+<h3><code>ScalingLaw</code> Class</h3>
+<p>Fits the power-law model <code>L(x) = a * x^(-alpha) + L_inf</code> to data points via log-linear regression. After fitting, <code>predict(x)</code> extrapolates to new scales.</p>
+
+<h3><code>estimate_compute</code></h3>
+<p>Simple formula: <code>C = 6 * N * D</code>. Useful for quick planning.</p>
+
+<h3><code>optimal_allocation_chinchilla</code></h3>
+<p>Solves the system of equations <code>C = 6ND</code> and <code>D = 20N</code> to find the Chinchilla-optimal parameter count and token count for a given budget.</p>
+
+<h3><code>optimal_allocation_kaplan</code></h3>
+<p>Implements Kaplan's allocation where N scales as C^0.73 and D as C^0.27. This favors larger models with less data compared to Chinchilla.</p>
+
+<h3><code>compare_allocations</code></h3>
+<p>Side-by-side comparison of both strategies for the same compute budget.</p>
+
+<h2 id="tests">Running Tests</h2>
+<pre><code>cd 02-pretrain/05_scaling_laws
+pytest tests.py -v</code></pre>
+
+<h2 id="exercises">Exercises</h2>
+<p>Open <code>exercise.py</code> and implement the TODO items:</p>
+<ol>
+  <li><code>ScalingLaw.fit</code> -- linearize and fit the power law.</li>
+  <li><code>estimate_compute</code> -- implement the FLOPs formula.</li>
+  <li><code>optimal_allocation_chinchilla</code> -- solve for optimal N and D.</li>
+</ol>
+<p>Check your work with <code>tests.py</code>.</p>
+
+<h2 id="references">References</h2>
+<ul>
+  <li>Kaplan, J. et al. (2020). "Scaling Laws for Neural Language Models." arXiv:2001.08361.</li>
+  <li>Hoffmann, J. et al. (2022). "Training Compute-Optimal Large Language Models" (Chinchilla). arXiv:2203.15556.</li>
+  <li>Touvron, H. et al. (2023). "LLaMA: Open and Efficient Foundation Language Models." arXiv:2302.13971.</li>
+</ul>
+
+</main>
+</body>
+</html>

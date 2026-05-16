@@ -1,0 +1,341 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Chain-of-Thought Reasoning - LLM From Scratch</title>
+<style>
+:root {
+  --sidebar-bg: #1a1a2e;
+  --sidebar-text: #c8c8d8;
+  --sidebar-active: #6c63ff;
+  --main-bg: #fafafa;
+  --code-bg: #282c34;
+  --code-text: #abb2bf;
+  --accent: #6c63ff;
+  --text: #2c3e50;
+  --border: #e0e0e0;
+  --heading: #1a1a2e;
+  --inline-code-bg: #f0f0f5;
+}
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  color: var(--text);
+  background: var(--main-bg);
+  display: flex;
+  min-height: 100vh;
+  line-height: 1.7;
+}
+.sidebar {
+  width: 280px;
+  background: var(--sidebar-bg);
+  color: var(--sidebar-text);
+  padding: 30px 20px;
+  position: fixed;
+  top: 0; left: 0;
+  height: 100vh;
+  overflow-y: auto;
+  z-index: 100;
+}
+.sidebar h2 { color: #fff; font-size: 1.1em; margin-bottom: 8px; padding-bottom: 12px; border-bottom: 2px solid var(--sidebar-active); }
+.sidebar .module-tag { font-size: 0.75em; color: var(--sidebar-active); text-transform: uppercase; letter-spacing: 1.5px; margin-bottom: 20px; display: block; }
+.sidebar ul { list-style: none; }
+.sidebar li { margin: 2px 0; }
+.sidebar a { color: var(--sidebar-text); text-decoration: none; display: block; padding: 6px 12px; border-radius: 6px; font-size: 0.9em; transition: all 0.2s; }
+.sidebar a:hover { background: rgba(108,99,255,0.15); color: #fff; }
+.sidebar a.active { background: var(--sidebar-active); color: #fff; }
+.main { margin-left: 280px; padding: 40px 60px; max-width: 900px; width: 100%; }
+h1 { font-size: 2.2em; color: var(--heading); margin-bottom: 8px; letter-spacing: -0.5px; }
+.subtitle { color: #888; font-size: 1em; margin-bottom: 30px; }
+h2 { font-size: 1.5em; color: var(--heading); margin: 40px 0 16px; padding-bottom: 8px; border-bottom: 2px solid var(--border); }
+h3 { font-size: 1.2em; color: var(--heading); margin: 28px 0 12px; }
+p { margin: 12px 0; }
+table { width: 100%; border-collapse: collapse; margin: 16px 0; font-size: 0.95em; }
+th, td { padding: 10px 14px; text-align: left; border: 1px solid var(--border); }
+th { background: #f0f0f5; font-weight: 600; }
+code { background: var(--inline-code-bg); padding: 2px 6px; border-radius: 4px; font-family: "SF Mono","Fira Code","Consolas", monospace; font-size: 0.9em; }
+pre { background: var(--code-bg); color: var(--code-text); padding: 20px 24px; border-radius: 10px; overflow-x: auto; margin: 16px 0; font-size: 0.88em; line-height: 1.6; }
+pre code { background: none; padding: 0; color: inherit; font-size: inherit; }
+.key-point { background: #f0f0ff; border-left: 4px solid var(--accent); padding: 14px 20px; margin: 20px 0; border-radius: 0 8px 8px 0; font-size: 0.95em; }
+.key-point strong { color: var(--accent); }
+ul, ol { margin: 10px 0 10px 24px; }
+li { margin: 4px 0; }
+hr { border: none; border-top: 1px solid var(--border); margin: 30px 0; }
+.diagram-container { display: flex; justify-content: center; margin: 24px 0; }
+svg text { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+@media (max-width: 768px) {
+  .sidebar { display: none; }
+  .main { margin-left: 0; padding: 20px; }
+}
+</style>
+</head>
+<body>
+<nav class="sidebar">
+  <h2>Chain-of-Thought Reasoning</h2>
+  <span class="module-tag">Module 06 - Chapter 02</span>
+  <ul>
+    <li><a href="#overview" class="active">The Big Picture</a></li>
+    <li><a href="#architecture">Architecture Details</a></li>
+    <li><a href="#prompter">ChainOfThoughtPrompter</a></li>
+    <li><a href="#extractor">StepExtractor</a></li>
+    <li><a href="#consistency">SelfConsistency</a></li>
+    <li><a href="#verifier">ReasoningVerifier</a></li>
+    <li><a href="#walkthrough">Forward Pass Walkthrough</a></li>
+    <li><a href="#exercises">Exercises</a></li>
+    <li><a href="#takeaways">Key Takeaways</a></li>
+    <li><a href="#further">Further Reading</a></li>
+  </ul>
+</nav>
+
+<main class="main">
+<h1>Chain-of-Thought Reasoning</h1>
+<p class="subtitle">Module 06 -- Agents, Chapter 02</p>
+
+<p>Chain-of-thought (CoT) prompting encourages LLMs to reason step by step before producing a final answer. Instead of jumping straight to a conclusion, the model shows its work, which dramatically improves accuracy on multi-step problems.</p>
+
+<hr>
+
+<h2 id="overview">The Big Picture</h2>
+
+<p>A chain-of-thought reasoning system works as follows:</p>
+
+<div class="diagram-container">
+<svg width="400" height="340" viewBox="0 0 400 340">
+  <defs>
+    <marker id="arrow" markerWidth="10" markerHeight="7" refX="10" refY="3.5" orient="auto"><polygon points="0 0, 10 3.5, 0 7" fill="#6c63ff"/></marker>
+  </defs>
+  <!-- Question -->
+  <rect x="120" y="10" width="160" height="36" rx="8" fill="#e8e6ff" stroke="#6c63ff" stroke-width="2"/>
+  <text x="200" y="33" text-anchor="middle" fill="#1a1a2e" font-size="13" font-weight="600">User question</text>
+  <line x1="200" y1="46" x2="200" y2="66" stroke="#6c63ff" stroke-width="2" marker-end="url(#arrow)"/>
+  <!-- Prompter -->
+  <rect x="80" y="70" width="240" height="36" rx="8" fill="#e8e6ff" stroke="#6c63ff" stroke-width="2"/>
+  <text x="200" y="93" text-anchor="middle" fill="#1a1a2e" font-size="12" font-weight="600">ChainOfThoughtPrompter adds CoT instructions</text>
+  <line x1="200" y1="106" x2="200" y2="126" stroke="#6c63ff" stroke-width="2" marker-end="url(#arrow)"/>
+  <!-- LLM -->
+  <rect x="80" y="130" width="240" height="36" rx="8" fill="#e8e6ff" stroke="#6c63ff" stroke-width="2"/>
+  <text x="200" y="153" text-anchor="middle" fill="#1a1a2e" font-size="12" font-weight="600">LLM generates a reasoning trace</text>
+  <line x1="200" y1="166" x2="200" y2="186" stroke="#6c63ff" stroke-width="2" marker-end="url(#arrow)"/>
+  <!-- Extractor -->
+  <rect x="80" y="190" width="240" height="36" rx="8" fill="#e8e6ff" stroke="#6c63ff" stroke-width="2"/>
+  <text x="200" y="213" text-anchor="middle" fill="#1a1a2e" font-size="12" font-weight="600">StepExtractor splits into discrete steps</text>
+  <line x1="200" y1="226" x2="200" y2="246" stroke="#6c63ff" stroke-width="2" marker-end="url(#arrow)"/>
+  <!-- Verifier -->
+  <rect x="80" y="250" width="240" height="36" rx="8" fill="#e8e6ff" stroke="#6c63ff" stroke-width="2"/>
+  <text x="200" y="273" text-anchor="middle" fill="#1a1a2e" font-size="12" font-weight="600">ReasoningVerifier checks the chain</text>
+  <line x1="200" y1="286" x2="200" y2="306" stroke="#6c63ff" stroke-width="2" marker-end="url(#arrow)"/>
+  <!-- Answer -->
+  <rect x="140" y="310" width="120" height="30" rx="8" fill="#d4edda" stroke="#28a745" stroke-width="2"/>
+  <text x="200" y="330" text-anchor="middle" fill="#1a1a2e" font-size="13" font-weight="600">Final answer</text>
+</svg>
+</div>
+
+<p>For robustness, SelfConsistency repeats this multiple times:</p>
+
+<div class="diagram-container">
+<svg width="360" height="320" viewBox="0 0 360 320">
+  <defs>
+    <marker id="arrow2" markerWidth="10" markerHeight="7" refX="10" refY="3.5" orient="auto"><polygon points="0 0, 10 3.5, 0 7" fill="#6c63ff"/></marker>
+  </defs>
+  <!-- Question -->
+  <rect x="130" y="10" width="100" height="32" rx="8" fill="#e8e6ff" stroke="#6c63ff" stroke-width="2"/>
+  <text x="180" y="31" text-anchor="middle" fill="#1a1a2e" font-size="13" font-weight="600">Question</text>
+  <!-- Paths -->
+  <line x1="180" y1="42" x2="180" y2="60" stroke="#6c63ff" stroke-width="2"/>
+  <line x1="180" y1="60" x2="60" y2="60" stroke="#6c63ff" stroke-width="1.5"/>
+  <line x1="180" y1="60" x2="300" y2="60" stroke="#6c63ff" stroke-width="1.5"/>
+  <!-- Path 1 -->
+  <line x1="60" y1="60" x2="60" y2="80" stroke="#6c63ff" stroke-width="1.5" marker-end="url(#arrow2)"/>
+  <rect x="10" y="85" width="100" height="28" rx="6" fill="#e8e6ff" stroke="#6c63ff" stroke-width="1.5"/>
+  <text x="60" y="104" text-anchor="middle" fill="#1a1a2e" font-size="12">Path 1 -> A</text>
+  <!-- Path 2 -->
+  <line x1="300" y1="60" x2="300" y2="80" stroke="#6c63ff" stroke-width="1.5" marker-end="url(#arrow2)"/>
+  <rect x="250" y="85" width="100" height="28" rx="6" fill="#e8e6ff" stroke="#6c63ff" stroke-width="1.5"/>
+  <text x="300" y="104" text-anchor="middle" fill="#1a1a2e" font-size="12">Path 2 -> A</text>
+  <!-- More paths -->
+  <line x1="180" y1="60" x2="180" y2="75" stroke="#6c63ff" stroke-width="1.5"/>
+  <line x1="100" y1="140" x2="100" y2="160" stroke="#6c63ff" stroke-width="1.5" marker-end="url(#arrow2)"/>
+  <rect x="50" y="165" width="100" height="28" rx="6" fill="#e8e6ff" stroke="#6c63ff" stroke-width="1.5"/>
+  <text x="100" y="184" text-anchor="middle" fill="#1a1a2e" font-size="12">Path 3 -> B</text>
+  <line x1="260" y1="140" x2="260" y2="160" stroke="#6c63ff" stroke-width="1.5" marker-end="url(#arrow2)"/>
+  <rect x="210" y="165" width="100" height="28" rx="6" fill="#e8e6ff" stroke="#6c63ff" stroke-width="1.5"/>
+  <text x="260" y="184" text-anchor="middle" fill="#1a1a2e" font-size="12">Path 4 -> A</text>
+  <line x1="180" y1="140" x2="180" y2="160" stroke="#6c63ff" stroke-width="1.5" marker-end="url(#arrow2)"/>
+  <rect x="130" y="165" width="100" height="28" rx="6" fill="#e8e6ff" stroke="#6c63ff" stroke-width="1.5"/>
+  <text x="180" y="184" text-anchor="middle" fill="#1a1a2e" font-size="12">Path 5 -> B</text>
+  <!-- Converge -->
+  <line x1="100" y1="193" x2="180" y2="230" stroke="#6c63ff" stroke-width="1.5"/>
+  <line x1="260" y1="193" x2="180" y2="230" stroke="#6c63ff" stroke-width="1.5"/>
+  <line x1="180" y1="193" x2="180" y2="230" stroke="#6c63ff" stroke-width="1.5"/>
+  <!-- Majority vote -->
+  <rect x="100" y="235" width="160" height="36" rx="8" fill="#fff3cd" stroke="#ffc107" stroke-width="2"/>
+  <text x="180" y="258" text-anchor="middle" fill="#1a1a2e" font-size="13" font-weight="600">Majority vote</text>
+  <line x1="180" y1="271" x2="180" y2="291" stroke="#ffc107" stroke-width="2" marker-end="url(#arrow2)"/>
+  <!-- Winner -->
+  <rect x="120" y="295" width="120" height="28" rx="8" fill="#d4edda" stroke="#28a745" stroke-width="2"/>
+  <text x="180" y="314" text-anchor="middle" fill="#1a1a2e" font-size="13" font-weight="600">Answer A (wins)</text>
+</svg>
+</div>
+
+<div class="key-point">
+  <strong>Key Insight: Showing Work Improves Accuracy</strong><br>
+  When an LLM reasons step by step, each intermediate step is generated conditioned on all previous steps. This autoregressive chain breaks complex problems into simpler sub-problems, reducing errors at each stage.
+</div>
+
+<hr>
+
+<h2 id="architecture">Architecture Details</h2>
+
+<h3 id="prompter">ChainOfThoughtPrompter</h3>
+
+<p>Formats questions with CoT instructions. Supports three styles:</p>
+
+<ul>
+  <li><strong>step_by_step</strong>: "Let's think step by step." (classic Kojima et al., 2022)</li>
+  <li><strong>think_aloud</strong>: "Think out loud, showing your reasoning process."</li>
+  <li><strong>structured</strong>: "Break this down into numbered steps and show your work."</li>
+</ul>
+
+<p>Also supports few-shot CoT with worked examples.</p>
+
+<pre><code>prompter = ChainOfThoughtPrompter()
+prompt = prompter.<span class="function">format_prompt</span>(<span class="string">"What is 15 * 23?"</span>)
+# -> <span class="string">"What is 15 * 23?\n\nLet's think step by step."</span></code></pre>
+
+<h3 id="extractor">StepExtractor</h3>
+
+<p>Parses LLM reasoning output into individual steps. Handles three formats:</p>
+
+<ol>
+  <li><strong>Numbered</strong>: "1. First step  2. Second step"</li>
+  <li><strong>Bullet points</strong>: "- First step  - Second step"</li>
+  <li><strong>Paragraph breaks</strong>: Steps separated by blank lines</li>
+</ol>
+
+<p>Tries numbered first, then bullets, then paragraphs.</p>
+
+<pre><code>extractor = StepExtractor()
+steps = extractor.<span class="function">extract_steps</span>(
+    <span class="string">"1. Multiply 15*20=300\n2. Multiply 15*3=45\n3. Add 300+45=345"</span>
+)
+# -> [<span class="string">"Multiply 15*20=300"</span>, <span class="string">"Multiply 15*3=45"</span>, <span class="string">"Add 300+45=345"</span>]</code></pre>
+
+<h3 id="consistency">SelfConsistency</h3>
+
+<p>Implements the self-consistency technique (Wang et al., 2022):</p>
+
+<ol>
+  <li>Generates N reasoning paths (with temperature > 0 for diversity)</li>
+  <li>Extracts the final answer from each path</li>
+  <li>Returns the most common answer via majority voting</li>
+</ol>
+
+<pre><code><span class="keyword">def</span> <span class="function">my_llm</span>(prompt: str) -> str:
+    <span class="keyword">return</span> <span class="string">"Step 1: ... The answer is 42."</span>
+
+sc = SelfConsistency(my_llm, num_paths=<span class="number">5</span>)
+answer = sc.<span class="function">solve</span>(<span class="string">"What is 6 * 7?"</span>)</code></pre>
+
+<h3 id="verifier">ReasoningVerifier</h3>
+
+<p>Checks reasoning chains for issues using heuristic rules:</p>
+
+<ul>
+  <li>Empty or missing steps</li>
+  <li>Steps that are too short to be meaningful</li>
+  <li>Contradictory steps (steps that negate earlier ones)</li>
+  <li>Answer not supported by the reasoning</li>
+</ul>
+
+<pre><code>verifier = ReasoningVerifier()
+result = verifier.<span class="function">verify_chain</span>([<span class="string">"Step 1..."</span>, <span class="string">"Step 2..."</span>, <span class="string">"Step 3..."</span>])
+# -> {"is_valid": True, "issues": []}</code></pre>
+
+<hr>
+
+<h2 id="walkthrough">Forward Pass Walkthrough</h2>
+
+<h3>Simple CoT</h3>
+
+<pre><code>Input:   "What is 15 * 23?"
+Prompt:  "What is 15 * 23?\n\nLet's think step by step."
+LLM:     "1. 15 * 20 = 300\n2. 15 * 3 = 45\n3. 300 + 45 = 345\nThe answer is 345."
+Steps:   ["15 * 20 = 300", "15 * 3 = 45", "300 + 45 = 345"]
+Answer:  "345"</code></pre>
+
+<h3>Self-Consistency</h3>
+
+<pre><code>Path 1:  "15 * 20 = 300, 15 * 3 = 45, 300 + 45 = 345. Answer: 345."
+Path 2:  "15 * 23 = 345. Answer: 345."
+Path 3:  "15 * 20 = 300... 300 + 45 = 345. Answer: 345."
+Path 4:  "Let me compute 15 * 23... = 345. Answer: 345."
+Path 5:  "15 * 23 = 345. Answer: 345."
+
+Majority: "345" (5/5 paths agree)</code></pre>
+
+<hr>
+
+<h2 id="exercises">Exercises</h2>
+
+<p>Open <code>exercise.py</code> to practice implementing chain-of-thought reasoning yourself.</p>
+
+<h3>Exercise Order</h3>
+
+<ol>
+  <li><strong>ChainOfThoughtPrompter</strong>: Format prompts with CoT instructions, implement few-shot examples</li>
+  <li><strong>StepExtractor</strong>: Parse numbered steps, bullets, and paragraphs</li>
+  <li><strong>SelfConsistency</strong>: Implement answer extraction and majority voting</li>
+  <li><strong>ReasoningVerifier</strong>: Check for empty steps, contradictions, and answer support</li>
+</ol>
+
+<h3>Tips</h3>
+
+<ul>
+  <li>For answer extraction, search from the end of the text to get the last occurrence.</li>
+  <li>Use <code>text.lower().rfind(pattern)</code> for case-insensitive searching from the end.</li>
+  <li>For majority voting, normalize (lowercase, strip) before counting, but return the original casing.</li>
+  <li>The verifier should use simple heuristics, not call another LLM.</li>
+</ul>
+
+<hr>
+
+<h2 id="takeaways">Key Takeaways</h2>
+
+<ol>
+  <li><strong>CoT prompting is a simple but powerful technique.</strong> Adding "Let's think step by step" to a prompt can dramatically improve reasoning accuracy with zero training.</li>
+  <li><strong>Self-consistency improves reliability.</strong> By sampling multiple reasoning paths and voting, we reduce the impact of any single reasoning error.</li>
+  <li><strong>Step extraction enables verification.</strong> Breaking a reasoning trace into discrete steps allows us to check each step independently.</li>
+  <li><strong>Heuristic verification catches obvious errors.</strong> While not perfect, checking for empty steps, contradictions, and unsupported answers catches many common failure modes.</li>
+  <li><strong>The answer extraction pattern matters.</strong> LLMs often signal their final answer with phrases like "The answer is" or "Therefore". Recognizing these patterns is key to reliable self-consistency.</li>
+</ol>
+
+<hr>
+
+<h2 id="further">Further Reading</h2>
+
+<ul>
+  <li><a href="https://arxiv.org/abs/2201.11903">Chain-of-Thought Prompting (Wei et al., 2022)</a> -- The original CoT paper</li>
+  <li><a href="https://arxiv.org/abs/2203.11171">Self-Consistency (Wang et al., 2022)</a> -- Sampling multiple reasoning paths</li>
+  <li><a href="https://arxiv.org/abs/2205.11916">Large Language Models are Zero-Shot Reasoners (Kojima et al., 2022)</a> -- "Let's think step by step"</li>
+  <li><a href="https://arxiv.org/abs/2305.10601">Tree of Thoughts (Yao et al., 2023)</a> -- Extending CoT with tree search</li>
+</ul>
+
+</main>
+
+<script>
+const links = document.querySelectorAll('.sidebar a');
+const sections = [];
+links.forEach(link => {
+  const id = link.getAttribute('href')?.slice(1);
+  if (id) { const el = document.getElementById(id); if (el) sections.push({ id, el, link }); }
+});
+window.addEventListener('scroll', () => {
+  let current = sections[0];
+  for (const s of sections) { if (s.el.getBoundingClientRect().top < 120) current = s; }
+  links.forEach(l => l.classList.remove('active'));
+  if (current) current.link.classList.add('active');
+});
+</script>
+</body>
+</html>

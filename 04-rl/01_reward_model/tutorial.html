@@ -1,0 +1,455 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Reward Model - LLM From Scratch</title>
+<style>
+:root {
+  --bg: #0f1117;
+  --bg-card: #161b22;
+  --bg-sidebar: #0d1117;
+  --bg-code: #1a1e28;
+  --text: #e6edf3;
+  --text-muted: #8b949e;
+  --text-dim: #6e7681;
+  --accent: #58a6ff;
+  --accent-green: #3fb950;
+  --accent-orange: #d29922;
+  --accent-red: #f85149;
+  --accent-purple: #bc8cff;
+  --border: #21262d;
+  --border-light: #30363d;
+  --sidebar-w: 280px;
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  line-height: 1.7;
+  font-size: 15px;
+}
+
+.layout {
+  display: flex;
+  min-height: 100vh;
+}
+
+/* Sidebar */
+.sidebar {
+  width: var(--sidebar-w);
+  background: var(--bg-sidebar);
+  border-right: 1px solid var(--border);
+  position: fixed;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  overflow-y: auto;
+  z-index: 100;
+  padding: 20px 0;
+}
+
+.sidebar-header {
+  padding: 10px 20px 20px;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 10px;
+}
+
+.sidebar-header .module-tag {
+  display: inline-block;
+  background: var(--accent);
+  color: #000;
+  font-size: 10px;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 10px;
+  margin-bottom: 8px;
+  letter-spacing: 0.5px;
+}
+
+.sidebar-header h2 {
+  font-size: 16px;
+  color: var(--text);
+  font-weight: 600;
+  line-height: 1.3;
+}
+
+.sidebar-header .chapter-num {
+  color: var(--accent);
+  font-size: 12px;
+  font-weight: 500;
+  margin-bottom: 4px;
+}
+
+.toc-item {
+  display: block;
+  padding: 6px 20px;
+  color: var(--text-muted);
+  text-decoration: none;
+  font-size: 13px;
+  transition: all 0.15s;
+  border-left: 3px solid transparent;
+}
+
+.toc-item:hover {
+  color: var(--text);
+  background: rgba(88, 166, 255, 0.06);
+  border-left-color: var(--accent);
+}
+
+.toc-sub {
+  padding-left: 36px;
+  font-size: 12px;
+}
+
+/* Main content */
+.main {
+  margin-left: var(--sidebar-w);
+  flex: 1;
+  padding: 40px 60px;
+  max-width: 900px;
+}
+
+.main h2 {
+  font-size: 24px;
+  color: var(--text);
+  margin-top: 40px;
+  margin-bottom: 16px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--border);
+  scroll-margin-top: 20px;
+}
+
+.main h3 {
+  font-size: 18px;
+  color: var(--accent);
+  margin-top: 30px;
+  margin-bottom: 12px;
+  scroll-margin-top: 20px;
+}
+
+.main p {
+  margin-bottom: 14px;
+  color: var(--text);
+}
+
+.main blockquote {
+  border-left: 4px solid var(--accent);
+  padding: 12px 20px;
+  margin: 16px 0;
+  background: rgba(88, 166, 255, 0.06);
+  border-radius: 0 6px 6px 0;
+  color: var(--text-muted);
+  font-size: 14px;
+}
+
+.main hr {
+  border: none;
+  border-top: 1px solid var(--border);
+  margin: 30px 0;
+}
+
+.main a {
+  color: var(--accent);
+  text-decoration: none;
+}
+
+.main a:hover {
+  text-decoration: underline;
+}
+
+.main strong {
+  color: var(--text);
+  font-weight: 600;
+}
+
+.main code {
+  font-family: 'SF Mono', 'Fira Code', 'Cascadia Code', 'Consolas', monospace;
+  background: var(--bg-code);
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 13px;
+  color: var(--accent-orange);
+}
+
+.main pre {
+  background: var(--bg-code);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 16px 20px;
+  overflow-x: auto;
+  margin: 16px 0;
+  line-height: 1.5;
+}
+
+.main pre code {
+  background: none;
+  padding: 0;
+  color: var(--text);
+  font-size: 13px;
+  display: block;
+  white-space: pre;
+}
+
+/* Tables */
+.table-wrapper {
+  overflow-x: auto;
+  margin: 16px 0;
+}
+
+.main table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+
+.main table th {
+  background: var(--bg-code);
+  color: var(--accent);
+  text-align: left;
+  padding: 10px 14px;
+  border: 1px solid var(--border);
+  font-weight: 600;
+  font-size: 13px;
+}
+
+.main table td {
+  padding: 8px 14px;
+  border: 1px solid var(--border);
+  color: var(--text);
+}
+
+.main table tr:hover td {
+  background: rgba(88, 166, 255, 0.04);
+}
+
+/* SVG Diagrams */
+.diagram {
+  display: block;
+  max-width: 100%;
+  margin: 20px 0;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 15px;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  .sidebar {
+    display: none;
+  }
+  .main {
+    margin-left: 0;
+    padding: 20px;
+  }
+}
+
+/* Syntax highlighting hints */
+.main pre code .comment { color: #6a737d; }
+.main pre code .keyword { color: #ff7b72; }
+.main pre code .string { color: #a5d6ff; }
+.main pre code .number { color: #79c0ff; }
+</style>
+</head>
+<body>
+<div class="layout">
+  <nav class="sidebar">
+    <div class="sidebar-header">
+      <div class="module-tag">MODULE 04 - RL</div>
+      <div class="chapter-num">Chapter 01</div>
+      <h2>Reward Model</h2>
+    </div>
+    <a href="#section-1" class="toc-item ">Prerequisites</a>
+<a href="#section-2" class="toc-item ">Files</a>
+<a href="#section-3" class="toc-item ">What is a Reward Model?</a>
+<a href="#section-4" class="toc-item toc-sub">From Preferences to Scores</a>
+<a href="#section-5" class="toc-item toc-sub">The Bradley-Terry Model</a>
+<a href="#section-6" class="toc-item ">Architecture</a>
+<a href="#section-7" class="toc-item toc-sub">RewardModel</a>
+<a href="#section-8" class="toc-item toc-sub">BradleyTerryLoss</a>
+<a href="#section-9" class="toc-item toc-sub">RewardDataset</a>
+<a href="#section-10" class="toc-item ">Code Walkthrough</a>
+<a href="#section-11" class="toc-item toc-sub">Step 1: Wrap the Transformer</a>
+<a href="#section-12" class="toc-item toc-sub">Step 2: Compute Rewards</a>
+<a href="#section-13" class="toc-item toc-sub">Step 3: Compute Bradley-Terry Loss</a>
+<a href="#section-14" class="toc-item toc-sub">Step 4: Training Loop</a>
+<a href="#section-15" class="toc-item ">Training Tips</a>
+<a href="#section-16" class="toc-item toc-sub">Learning Rate</a>
+<a href="#section-17" class="toc-item toc-sub">Data Requirements</a>
+<a href="#section-18" class="toc-item toc-sub">Common Pitfalls</a>
+<a href="#section-19" class="toc-item ">How to Run</a>
+<a href="#section-20" class="toc-item toc-sub">Run Tests</a>
+<a href="#section-21" class="toc-item toc-sub">Run Exercises</a>
+<a href="#section-22" class="toc-item ">Exercises</a>
+<a href="#section-23" class="toc-item toc-sub">Exercise Order</a>
+<a href="#section-24" class="toc-item toc-sub">Tips</a>
+<a href="#section-25" class="toc-item ">Key Takeaways</a>
+<a href="#section-26" class="toc-item ">Further Reading</a>
+
+  </nav>
+  <main class="main">
+    
+<svg viewBox="0 0 700 180" xmlns="http://www.w3.org/2000/svg" class="diagram">
+  <defs>
+    <marker id="arrowhead-rm" markerWidth="10" markerHeight="7" refX="10" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#64b5f6"/>
+    </marker>
+  </defs>
+  <rect x="20" y="50" width="120" height="60" rx="8" fill="#1a237e" stroke="#5c6bc0" stroke-width="2"/>
+  <text x="80" y="75" text-anchor="middle" fill="#e8eaf6" font-size="13" font-weight="bold">Human Preferences</text>
+  <text x="80" y="95" text-anchor="middle" fill="#9fa8da" font-size="11">(chosen, rejected) pairs</text>
+  <line x1="140" y1="80" x2="210" y2="80" stroke="#64b5f6" stroke-width="2" marker-end="url(#arrowhead-rm)"/>
+  <rect x="210" y="40" width="160" height="80" rx="8" fill="#0d47a1" stroke="#42a5f5" stroke-width="2"/>
+  <text x="290" y="65" text-anchor="middle" fill="#e3f2fd" font-size="13" font-weight="bold">Bradley-Terry Loss</text>
+  <text x="290" y="85" text-anchor="middle" fill="#90caf9" font-size="11">-log sigmoid(r_chosen - r_rejected)</text>
+  <text x="290" y="105" text-anchor="middle" fill="#90caf9" font-size="11">gradient update</text>
+  <line x1="370" y1="80" x2="440" y2="80" stroke="#64b5f6" stroke-width="2" marker-end="url(#arrowhead-rm)"/>
+  <rect x="440" y="30" width="140" height="100" rx="8" fill="#004d40" stroke="#26a69a" stroke-width="2"/>
+  <text x="510" y="55" text-anchor="middle" fill="#e0f2f1" font-size="13" font-weight="bold">Reward Model</text>
+  <text x="510" y="75" text-anchor="middle" fill="#80cbc4" font-size="11">Transformer</text>
+  <text x="510" y="95" text-anchor="middle" fill="#80cbc4" font-size="11">+ Scalar Head</text>
+  <text x="510" y="115" text-anchor="middle" fill="#b2dfdb" font-size="11">r = score(text)</text>
+  <line x1="580" y1="80" x2="640" y2="80" stroke="#64b5f6" stroke-width="2" marker-end="url(#arrowhead-rm)"/>
+  <rect x="620" y="55" width="70" height="50" rx="8" fill="#4a148c" stroke="#ab47bc" stroke-width="2"/>
+  <text x="655" y="78" text-anchor="middle" fill="#e1bee7" font-size="12" font-weight="bold">r(x)</text>
+  <text x="655" y="95" text-anchor="middle" fill="#ce93d8" font-size="10">scalar</text>
+</svg>
+    <blockquote><p>**Module 04 -- Reinforcement Learning, Chapter 01**</p></blockquote>
+<p>A language model trained on next-token prediction does not inherently know what "good" output looks like from a human perspective. The reward model bridges this gap: it learns to score text quality by training on human preference data -- pairs of (chosen, rejected) responses. This score then drives reinforcement learning to steer the language model toward outputs humans prefer.</p>
+<p>This chapter implements the core machinery: a reward model that wraps a transformer and outputs scalar scores, the Bradley-Terry pairwise ranking loss, and a dataset for preference pairs.</p>
+<hr>
+<h2 id="section-1">Prerequisites</h2>
+<p>- Transformer language model basics (Module 01) - PyTorch nn.Module, Dataset, DataLoader - Basic understanding of RLHF concepts</p>
+<h2 id="section-2">Files</h2>
+<div class="table-wrapper"><table>
+<thead><tr>
+<th>File</th>
+<th>Purpose</th>
+</tr></thead>
+<tbody>
+<tr>
+<td>`reward_model.py`</td>
+<td>Core implementation: RewardModel, BradleyTerryLoss, RewardDataset, train_reward_model</td>
+</tr>
+<tr>
+<td>`exercise.py`</td>
+<td>Fill-in-the-blank exercises to reinforce understanding</td>
+</tr>
+<tr>
+<td>`solution.py`</td>
+<td>Reference solutions for the exercises</td>
+</tr>
+<tr>
+<td>`tests.py`</td>
+<td>pytest tests for correctness</td>
+</tr>
+</tbody></table></div>
+<hr>
+<h2 id="section-3">What is a Reward Model?</h2>
+<h3 id="section-4">From Preferences to Scores</h3>
+<p>In RLHF (Reinforcement Learning from Human Feedback), the reward model is trained on human preferences. Humans compare two responses to the same prompt and indicate which one they prefer. The reward model learns to assign higher scores to preferred responses.</p>
+<pre><code>Prompt: "Explain quantum computing"
+Response A: "Quantum computing uses qubits that can be 0 and 1 simultaneously..."
+Response B: "idk lol"
+
+Human preference: A is better
+Reward model learns: score(A) &gt; score(B)</code></pre>
+<h3 id="section-5">The Bradley-Terry Model</h3>
+<p>The Bradley-Terry model is the mathematical foundation for learning from pairwise preferences. It defines the probability that response A is preferred over response B as:</p>
+<pre><code>P(A &gt; B) = sigmoid(r_A - r_B)</code></pre>
+<p>Where <code>r_A</code> and <code>r_B</code> are the reward scores assigned by the model. The training loss is the negative log-likelihood:</p>
+<pre><code>loss = -log(sigmoid(r_chosen - r_rejected))</code></pre>
+<p>This has nice properties: - When <code>r_chosen >> r_rejected</code>: loss approaches 0 (model correctly ranks them) - When <code>r_chosen << r_rejected</code>: loss is very high (model is wrong) - When <code>r_chosen == r_rejected</code>: loss = log(2) (maximum uncertainty)</p>
+<hr>
+<h2 id="section-6">Architecture</h2>
+<h3 id="section-7">RewardModel</h3>
+<p>Wraps any transformer model and adds a scalar reward head:</p>
+<pre><code class="language-python">class RewardModel(nn.Module):
+    def __init__(self, transformer):
+        self.transformer = transformer
+        self.scalar_head = nn.Linear(d_model, 1)
+
+    def forward(self, input_ids):
+        hidden_states = self.transformer(input_ids)  # (batch, seq, d_model)
+        last_hidden = hidden_states[:, -1, :]          # (batch, d_model)
+        reward = self.scalar_head(last_hidden)          # (batch, 1)
+        return reward.squeeze(-1)                       # (batch,)</code></pre>
+<p>Key design choice: we use the <strong>last token's hidden state</strong> as the sequence representation. In autoregressive (GPT-style) models, the last token has attended to all previous tokens, so it contains the most complete representation of the entire sequence.</p>
+<h3 id="section-8">BradleyTerryLoss</h3>
+<p>A simple but elegant loss function:</p>
+<pre><code class="language-python">def forward(self, chosen_rewards, rejected_rewards):
+    loss = -F.logsigmoid(chosen_rewards - rejected_rewards)
+    return loss.mean()</code></pre>
+<p>We use <code>F.logsigmoid</code> instead of <code>torch.log(torch.sigmoid(...))</code> for numerical stability. The <code>logsigmoid</code> function avoids the overflow/underflow issues that can occur when computing <code>log(sigmoid(x))</code> for large positive or negative values.</p>
+<h3 id="section-9">RewardDataset</h3>
+<p>A PyTorch Dataset that loads preference pairs:</p>
+<pre><code class="language-python">pairs = [
+    {"chosen": [token_ids...], "rejected": [token_ids...]},
+    {"chosen": [token_ids...], "rejected": [token_ids...]},
+    ...
+]</code></pre>
+<p>Supports optional padding to a fixed <code>max_length</code> for batched training.</p>
+<hr>
+<h2 id="section-10">Code Walkthrough</h2>
+<h3 id="section-11">Step 1: Wrap the Transformer</h3>
+<pre><code class="language-python">model = RewardModel(transformer)</code></pre>
+<p>The RewardModel takes any transformer that returns hidden states of shape <code>(batch, seq, d_model)</code>. It automatically infers <code>d_model</code> from the transformer's attributes.</p>
+<h3 id="section-12">Step 2: Compute Rewards</h3>
+<pre><code class="language-python">hidden_states = self.transformer(input_ids)  # (batch, seq, d_model)
+last_hidden = hidden_states[:, -1, :]          # (batch, d_model)
+reward = self.scalar_head(last_hidden).squeeze(-1)  # (batch,)</code></pre>
+<p>The last token's hidden state is projected to a single scalar. This scalar is the reward score.</p>
+<h3 id="section-13">Step 3: Compute Bradley-Terry Loss</h3>
+<pre><code class="language-python">loss = -F.logsigmoid(chosen_rewards - rejected_rewards).mean()</code></pre>
+<p>The loss encourages <code>r_chosen > r_rejected</code>. The gradient of this loss with respect to the model parameters pushes the reward higher for chosen responses and lower for rejected responses.</p>
+<h3 id="section-14">Step 4: Training Loop</h3>
+<pre><code class="language-python">chosen_rewards = model(batch["chosen_input_ids"])
+rejected_rewards = model(batch["rejected_input_ids"])
+loss = loss_fn(chosen_rewards, rejected_rewards)
+optimizer.zero_grad()
+loss.backward()
+optimizer.step()</code></pre>
+<p>Standard PyTorch training loop. The key insight is that we compute rewards for both chosen and rejected responses in the same forward pass (they are independent), then combine them with the pairwise loss.</p>
+<hr>
+<h2 id="section-15">Training Tips</h2>
+<h3 id="section-16">Learning Rate</h3>
+<p>Reward model training typically uses: - Full fine-tuning: 1e-5 to 5e-5 - With a pre-trained transformer: start lower (1e-5) to avoid catastrophic forgetting</p>
+<h3 id="section-17">Data Requirements</h3>
+<p>Reward models are data-hungry. Typical numbers: - Minimum viable: 1K-5K preference pairs - Production quality: 10K-100K+ pairs - More diverse prompts = better generalization</p>
+<h3 id="section-18">Common Pitfalls</h3>
+<p>1. <strong>Reward hacking</strong>: The model finds ways to get high scores without actually being better (e.g., longer responses get higher scores). Mitigate with diverse training data and regularization.</p>
+<p>2. <strong>Overfitting</strong>: Reward models can memorize training pairs. Use dropout, weight decay, and early stopping.</p>
+<p>3. <strong>Distribution shift</strong>: The reward model is trained on a fixed dataset, but during RL training, the policy generates responses that may look different from the training data. This is a fundamental challenge in RLHF.</p>
+<hr>
+<h2 id="section-19">How to Run</h2>
+<h3 id="section-20">Run Tests</h3>
+<pre><code class="language-bash">cd /path/to/llm-from-scratch
+pytest 04-rl/01_reward_model/tests.py -v</code></pre>
+<h3 id="section-21">Run Exercises</h3>
+<p>Open <code>exercise.py</code> and fill in the <code>TODO</code> sections. Then verify:</p>
+<pre><code class="language-bash">pytest 04-rl/01_reward_model/tests.py -v</code></pre>
+<hr>
+<h2 id="section-22">Exercises</h2>
+<p>Open <code>exercise.py</code> to practice implementing reward model components yourself.</p>
+<h3 id="section-23">Exercise Order</h3>
+<p>1. <strong><code>BradleyTerryLossExercise.forward</code></strong> -- Implement the pairwise ranking loss using logsigmoid 2. <strong><code>RewardModelExercise.forward</code></strong> -- Compute reward scores from transformer hidden states 3. <strong><code>RewardDatasetExercise.__getitem__</code></strong> -- Load and pad preference pairs 4. <strong><code>train_reward_model_exercise</code></strong> -- Write the training loop</p>
+<h3 id="section-24">Tips</h3>
+<p>- Start with <code>BradleyTerryLoss</code>. It is a one-line implementation using <code>F.logsigmoid</code>. - For <code>RewardModel.forward</code>, the key insight is: take the last token's hidden state and project it to a scalar. - For <code>RewardDataset.__getitem__</code>, handle both the padding and non-padding cases. - For <code>train_reward_model</code>, follow the standard PyTorch training loop pattern.</p>
+<hr>
+<h2 id="section-25">Key Takeaways</h2>
+<p>1. <strong>The reward model learns from preferences, not labels.</strong> It trains on pairs of (chosen, rejected) responses, learning to score chosen responses higher.</p>
+<p>2. <strong>Bradley-Terry is the standard preference model.</strong> P(A > B) = sigmoid(r_A - r_B). The loss is -log(sigmoid(r_chosen - r_rejected)).</p>
+<p>3. <strong>Use the last token's hidden state.</strong> In autoregressive models, the last token has the most context and is the natural choice for sequence-level representation.</p>
+<p>4. <strong>logsigmoid for numerical stability.</strong> Never compute log(sigmoid(x)) directly -- use F.logsigmoid to avoid overflow/underflow.</p>
+<p>5. <strong>The reward model is the foundation for RLHF.</strong> Once trained, its scores drive the RL training loop (PPO, DPO, etc.) to align the language model with human preferences.</p>
+<hr>
+<h2 id="section-26">Further Reading</h2>
+<p>- <a href="https://arxiv.org/abs/2203.02155">Training Language Models to Follow Instructions with Human Feedback (Ouyang et al., 2022)</a> -- The InstructGPT paper that popularized RLHF - <a href="https://arxiv.org/abs/2009.01325">Learning to Summarize from Human Feedback (Stiennon et al., 2020)</a> -- Early work on reward models for summarization - <a href="https://arxiv.org/abs/2212.08073">Constitutional AI (Bai et al., 2022)</a> -- Using AI feedback instead of human feedback - <a href="https://arxiv.org/abs/2210.10760">Scaling Laws for Reward Model Overoptimization (Gao et al., 2023)</a> -- How reward hacking scales with model size</p>
+  </main>
+</div>
+</body>
+</html>

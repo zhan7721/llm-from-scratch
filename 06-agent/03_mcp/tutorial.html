@@ -1,0 +1,313 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Model Context Protocol (MCP) - LLM From Scratch</title>
+<style>
+:root {
+  --sidebar-bg: #1a1a2e;
+  --sidebar-text: #c8c8d8;
+  --sidebar-active: #6c63ff;
+  --main-bg: #fafafa;
+  --code-bg: #282c34;
+  --code-text: #abb2bf;
+  --accent: #6c63ff;
+  --text: #2c3e50;
+  --border: #e0e0e0;
+  --heading: #1a1a2e;
+  --inline-code-bg: #f0f0f5;
+}
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  color: var(--text);
+  background: var(--main-bg);
+  display: flex;
+  min-height: 100vh;
+  line-height: 1.7;
+}
+.sidebar {
+  width: 280px;
+  background: var(--sidebar-bg);
+  color: var(--sidebar-text);
+  padding: 30px 20px;
+  position: fixed;
+  top: 0; left: 0;
+  height: 100vh;
+  overflow-y: auto;
+  z-index: 100;
+}
+.sidebar h2 { color: #fff; font-size: 1.1em; margin-bottom: 8px; padding-bottom: 12px; border-bottom: 2px solid var(--sidebar-active); }
+.sidebar .module-tag { font-size: 0.75em; color: var(--sidebar-active); text-transform: uppercase; letter-spacing: 1.5px; margin-bottom: 20px; display: block; }
+.sidebar ul { list-style: none; }
+.sidebar li { margin: 2px 0; }
+.sidebar a { color: var(--sidebar-text); text-decoration: none; display: block; padding: 6px 12px; border-radius: 6px; font-size: 0.9em; transition: all 0.2s; }
+.sidebar a:hover { background: rgba(108,99,255,0.15); color: #fff; }
+.sidebar a.active { background: var(--sidebar-active); color: #fff; }
+.main { margin-left: 280px; padding: 40px 60px; max-width: 900px; width: 100%; }
+h1 { font-size: 2.2em; color: var(--heading); margin-bottom: 8px; letter-spacing: -0.5px; }
+.subtitle { color: #888; font-size: 1em; margin-bottom: 30px; }
+h2 { font-size: 1.5em; color: var(--heading); margin: 40px 0 16px; padding-bottom: 8px; border-bottom: 2px solid var(--border); }
+h3 { font-size: 1.2em; color: var(--heading); margin: 28px 0 12px; }
+p { margin: 12px 0; }
+table { width: 100%; border-collapse: collapse; margin: 16px 0; font-size: 0.95em; }
+th, td { padding: 10px 14px; text-align: left; border: 1px solid var(--border); }
+th { background: #f0f0f5; font-weight: 600; }
+code { background: var(--inline-code-bg); padding: 2px 6px; border-radius: 4px; font-family: "SF Mono","Fira Code","Consolas", monospace; font-size: 0.9em; }
+pre { background: var(--code-bg); color: var(--code-text); padding: 20px 24px; border-radius: 10px; overflow-x: auto; margin: 16px 0; font-size: 0.88em; line-height: 1.6; }
+pre code { background: none; padding: 0; color: inherit; font-size: inherit; }
+.key-point { background: #f0f0ff; border-left: 4px solid var(--accent); padding: 14px 20px; margin: 20px 0; border-radius: 0 8px 8px 0; font-size: 0.95em; }
+.key-point strong { color: var(--accent); }
+ul, ol { margin: 10px 0 10px 24px; }
+li { margin: 4px 0; }
+hr { border: none; border-top: 1px solid var(--border); margin: 30px 0; }
+.diagram-container { display: flex; justify-content: center; margin: 24px 0; }
+svg text { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+@media (max-width: 768px) {
+  .sidebar { display: none; }
+  .main { margin-left: 0; padding: 20px; }
+}
+</style>
+</head>
+<body>
+<nav class="sidebar">
+  <h2>Model Context Protocol</h2>
+  <span class="module-tag">Module 06 - Chapter 03</span>
+  <ul>
+    <li><a href="#overview" class="active">The Big Picture</a></li>
+    <li><a href="#architecture">Architecture Details</a></li>
+    <li><a href="#message">MCPMessage</a></li>
+    <li><a href="#server">MCPServer</a></li>
+    <li><a href="#client">MCPClient</a></li>
+    <li><a href="#agent">MCPAgent</a></li>
+    <li><a href="#walkthrough">Forward Pass Walkthrough</a></li>
+    <li><a href="#exercises">Exercises</a></li>
+    <li><a href="#takeaways">Key Takeaways</a></li>
+    <li><a href="#further">Further Reading</a></li>
+  </ul>
+</nav>
+
+<main class="main">
+<h1>Model Context Protocol (MCP)</h1>
+<p class="subtitle">Module 06 -- Agents, Chapter 03</p>
+
+<p>The Model Context Protocol (MCP) is a standardized communication layer between LLM agents and external tools. Instead of ad-hoc function calls, MCP defines a clean message-based protocol where all interactions flow through structured messages, separating concerns between the client (communication), server (tool management), and agent (reasoning loop).</p>
+
+<hr>
+
+<h2 id="overview">The Big Picture</h2>
+
+<p>The MCP architecture separates responsibilities into three layers:</p>
+
+<div class="diagram-container">
+<svg width="500" height="380" viewBox="0 0 500 380">
+  <defs>
+    <marker id="arrow" markerWidth="10" markerHeight="7" refX="10" refY="3.5" orient="auto"><polygon points="0 0, 10 3.5, 0 7" fill="#6c63ff"/></marker>
+    <marker id="arrow-green" markerWidth="10" markerHeight="7" refX="10" refY="3.5" orient="auto"><polygon points="0 0, 10 3.5, 0 7" fill="#28a745"/></marker>
+  </defs>
+  <!-- User prompt -->
+  <rect x="170" y="10" width="160" height="36" rx="8" fill="#e8e6ff" stroke="#6c63ff" stroke-width="2"/>
+  <text x="250" y="33" text-anchor="middle" fill="#1a1a2e" font-size="13" font-weight="600">User prompt</text>
+  <line x1="250" y1="46" x2="250" y2="66" stroke="#6c63ff" stroke-width="2" marker-end="url(#arrow)"/>
+  <!-- MCPAgent -->
+  <rect x="150" y="70" width="200" height="40" rx="8" fill="#e8e6ff" stroke="#6c63ff" stroke-width="2"/>
+  <text x="250" y="95" text-anchor="middle" fill="#1a1a2e" font-size="13" font-weight="600">MCPAgent (reasoning loop)</text>
+  <!-- Branch to Client -->
+  <line x1="250" y1="110" x2="250" y2="130" stroke="#6c63ff" stroke-width="2"/>
+  <line x1="250" y1="130" x2="150" y2="130" stroke="#6c63ff" stroke-width="2"/>
+  <line x1="150" y1="130" x2="150" y2="150" stroke="#6c63ff" stroke-width="2" marker-end="url(#arrow)"/>
+  <text x="200" y="143" fill="#888" font-size="11">tool calls</text>
+  <!-- MCPClient -->
+  <rect x="70" y="155" width="160" height="36" rx="8" fill="#d4edda" stroke="#28a745" stroke-width="2"/>
+  <text x="150" y="178" text-anchor="middle" fill="#1a1a2e" font-size="13" font-weight="600">MCPClient</text>
+  <line x1="150" y1="191" x2="150" y2="211" stroke="#28a745" stroke-width="2" marker-end="url(#arrow-green)"/>
+  <!-- MCPServer -->
+  <rect x="70" y="216" width="160" height="36" rx="8" fill="#fff3cd" stroke="#ffc107" stroke-width="2"/>
+  <text x="150" y="239" text-anchor="middle" fill="#1a1a2e" font-size="13" font-weight="600">MCPServer</text>
+  <!-- Tools -->
+  <line x1="150" y1="252" x2="150" y2="272" stroke="#ffc107" stroke-width="2"/>
+  <line x1="150" y1="272" x2="70" y2="272" stroke="#ffc107" stroke-width="1.5"/>
+  <line x1="150" y1="272" x2="150" y2="272" stroke="#ffc107" stroke-width="1.5"/>
+  <line x1="150" y1="272" x2="230" y2="272" stroke="#ffc107" stroke-width="1.5"/>
+  <line x1="70" y1="272" x2="70" y2="290" stroke="#ffc107" stroke-width="1.5" marker-end="url(#arrow)"/>
+  <line x1="150" y1="272" x2="150" y2="290" stroke="#ffc107" stroke-width="1.5" marker-end="url(#arrow)"/>
+  <line x1="230" y1="272" x2="230" y2="290" stroke="#ffc107" stroke-width="1.5" marker-end="url(#arrow)"/>
+  <rect x="20" y="295" width="100" height="28" rx="6" fill="#f8f8f8" stroke="#ccc" stroke-width="1.5"/>
+  <text x="70" y="314" text-anchor="middle" fill="#1a1a2e" font-size="12">Tool A</text>
+  <rect x="100" y="295" width="100" height="28" rx="6" fill="#f8f8f8" stroke="#ccc" stroke-width="1.5"/>
+  <text x="150" y="314" text-anchor="middle" fill="#1a1a2e" font-size="12">Tool B</text>
+  <rect x="180" y="295" width="100" height="28" rx="6" fill="#f8f8f8" stroke="#ccc" stroke-width="1.5"/>
+  <text x="230" y="314" text-anchor="middle" fill="#1a1a2e" font-size="12">Tool C</text>
+  <!-- Response path back -->
+  <line x1="310" y1="90" x2="360" y2="90" stroke="#6c63ff" stroke-width="2"/>
+  <line x1="360" y1="90" x2="360" y2="350" stroke="#6c63ff" stroke-width="2"/>
+  <line x1="360" y1="350" x2="250" y2="350" stroke="#6c63ff" stroke-width="2" marker-end="url(#arrow)"/>
+  <rect x="250" y="340" width="120" height="28" rx="8" fill="#d4edda" stroke="#28a745" stroke-width="2"/>
+  <text x="310" y="359" text-anchor="middle" fill="#1a1a2e" font-size="13" font-weight="600">Final response</text>
+  <!-- Response label -->
+  <text x="385" y="220" fill="#888" font-size="11" transform="rotate(-90, 385, 220)">results flow back</text>
+</svg>
+</div>
+
+<p>All communication between layers uses <code>MCPMessage</code> objects:</p>
+
+<pre><code>MCPMessage
+    +-- role: "user" | "assistant" | "tool" | "system"
+    +-- content: str
+    +-- tool_calls: [{"name": ..., "arguments": ...}]
+    +-- tool_results: [{"name": ..., "result": ...}]
+    +-- metadata: dict</code></pre>
+
+<div class="key-point">
+  <strong>Key Insight: Protocol Over Plumbing</strong><br>
+  MCP separates the "what" (tool definitions and logic) from the "how" (communication format). This makes it easy to swap out the transport layer (HTTP, WebSocket, in-process) without changing tool implementations or agent logic.
+</div>
+
+<hr>
+
+<h2 id="architecture">Architecture Details</h2>
+
+<h3 id="message">MCPMessage</h3>
+
+<p>The universal message format. Every piece of information in the system -- user input, LLM output, tool requests, tool results -- is an MCPMessage. This uniformity makes the system easy to debug, log, and extend.</p>
+
+<pre><code>msg = MCPMessage(role=<span class="string">"user"</span>, content=<span class="string">"What is 2 + 2?"</span>)
+data = msg.<span class="function">to_dict</span>()  <span class="comment"># Serialize for storage/transport</span>
+restored = MCPMessage.<span class="function">from_dict</span>(data)  <span class="comment"># Deserialize</span></code></pre>
+
+<h3 id="server">MCPServer</h3>
+
+<p>The server owns the tools. It registers them, looks them up by name, executes them, and catches errors. When a message arrives with tool calls, the server runs each one and returns a message with results.</p>
+
+<pre><code>server = MCPServer()
+server.<span class="function">register_tool</span>(
+    name=<span class="string">"add"</span>,
+    fn=<span class="keyword">lambda</span> a, b: a + b,
+    description=<span class="string">"Add two numbers"</span>,
+    parameters={<span class="string">"a"</span>: {<span class="string">"type"</span>: <span class="string">"number"</span>}, <span class="string">"b"</span>: {<span class="string">"type"</span>: <span class="string">"number"</span>}},
+)</code></pre>
+
+<h3 id="client">MCPClient</h3>
+
+<p>A thin communication layer. The client sends messages to the server and returns responses. In this simple implementation it's a direct function call, but the interface could be extended to use HTTP, gRPC, or any other transport.</p>
+
+<pre><code>client = MCPClient(server)
+response = client.<span class="function">send</span>(MCPMessage(role=<span class="string">"user"</span>, content=<span class="string">"Hello"</span>))</code></pre>
+
+<h3 id="agent">MCPAgent</h3>
+
+<p>The agent ties everything together. It runs a loop:</p>
+<ol>
+  <li>Send messages to the LLM.</li>
+  <li>Parse the LLM output for tool calls.</li>
+  <li>If tool calls are found, send them to the server via the client.</li>
+  <li>Add tool results to the message history.</li>
+  <li>Repeat until no tool calls or max turns reached.</li>
+</ol>
+
+<pre><code>agent = MCPAgent(llm_fn, server)
+result = agent.<span class="function">run</span>(<span class="string">"What is 2 + 3?"</span>)</code></pre>
+
+<hr>
+
+<h2 id="walkthrough">Forward Pass Walkthrough</h2>
+
+<h3>Simple Request (No Tools)</h3>
+
+<pre><code>Input:    "What is 2 + 3?"
+LLM:      "The answer is 5."
+Output:   "The answer is 5."</code></pre>
+
+<h3>Request with Tool Call</h3>
+
+<pre><code>Input:    "What is 2 + 3?"
+
+Turn 1:
+  LLM:    "I need to calculate.
+           ```tool_call
+           {"name": "add", "arguments": {"a": 2, "b": 3}}
+           ```"
+  Agent:  Sends tool call to server via client
+  Server: Executes add(2, 3) -> "5"
+  Result: MCPMessage(role="tool", tool_results=[{name: "add", result: "5"}])
+
+Turn 2:
+  LLM:    "The result is 5."
+Output:   "The result is 5."</code></pre>
+
+<h3>Multi-Turn Tool Chain</h3>
+
+<pre><code>Input:    "Compute (10 + 20) * 2"
+
+Turn 1:   LLM calls add(10, 20) -> "30"
+Turn 2:   LLM calls mul(30, 2) -> "60"
+Turn 3:   LLM: "The final answer is 60."
+Output:   "The final answer is 60."</code></pre>
+
+<hr>
+
+<h2 id="exercises">Exercises</h2>
+
+<p>Open <code>exercise.py</code> to practice implementing the MCP system yourself.</p>
+
+<h3>Exercise Order</h3>
+
+<ol>
+  <li><strong>MCPMessage</strong>: Implement creation, validation, serialization, deserialization</li>
+  <li><strong>MCPServer</strong>: Implement tool registration and request handling</li>
+  <li><strong>MCPClient</strong>: Implement send and send_and_receive</li>
+  <li><strong>MCPAgent</strong>: Implement the agent loop with tool call parsing</li>
+</ol>
+
+<h3>Tips</h3>
+
+<ul>
+  <li>For MCPMessage, validate the role in <code>__init__</code> and raise ValueError for invalid roles.</li>
+  <li>Use <code>or []</code> and <code>or {}</code> patterns to handle None defaults cleanly.</li>
+  <li>The server should catch all tool execution exceptions and return error strings.</li>
+  <li>The agent's <code>_parse_tool_calls</code> uses the same fenced-block format as Module 06, Chapter 01.</li>
+  <li>Track message history as a list of dicts for LLM consumption.</li>
+</ul>
+
+<hr>
+
+<h2 id="takeaways">Key Takeaways</h2>
+
+<ol>
+  <li><strong>Protocols standardize communication.</strong> By defining a clear message format (MCPMessage), all components can communicate without knowing each other's internals.</li>
+  <li><strong>Separation of concerns improves maintainability.</strong> The server manages tools, the client handles transport, and the agent focuses on reasoning. Each can be modified independently.</li>
+  <li><strong>Error handling belongs at the boundary.</strong> The server catches tool errors and converts them to message results, so the agent never crashes from a bad tool call.</li>
+  <li><strong>The client abstraction enables flexibility.</strong> Today it's a direct function call; tomorrow it could be an HTTP request to a remote service. The agent doesn't need to change.</li>
+  <li><strong>Message history is the agent's memory.</strong> By accumulating all messages (user, assistant, tool), the agent maintains full context for the LLM to reason about.</li>
+</ol>
+
+<hr>
+
+<h2 id="further">Further Reading</h2>
+
+<ul>
+  <li><a href="https://modelcontextprotocol.io/">Model Context Protocol Specification</a> -- The official MCP specification</li>
+  <li><a href="https://www.anthropic.com/news/model-context-protocol">Anthropic's MCP Announcement</a> -- MCP introduction</li>
+  <li><a href="https://platform.openai.com/docs/guides/function-calling">Tool Calling for LLMs</a> -- OpenAI function calling reference</li>
+  <li><a href="https://arxiv.org/abs/2210.03629">ReAct: Reasoning and Acting (Yao et al., 2022)</a> -- The agent loop pattern</li>
+</ul>
+
+</main>
+
+<script>
+const links = document.querySelectorAll('.sidebar a');
+const sections = [];
+links.forEach(link => {
+  const id = link.getAttribute('href')?.slice(1);
+  if (id) { const el = document.getElementById(id); if (el) sections.push({ id, el, link }); }
+});
+window.addEventListener('scroll', () => {
+  let current = sections[0];
+  for (const s of sections) { if (s.el.getBoundingClientRect().top < 120) current = s; }
+  links.forEach(l => l.classList.remove('active'));
+  if (current) current.link.classList.add('active');
+});
+</script>
+</body>
+</html>

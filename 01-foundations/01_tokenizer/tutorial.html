@@ -1,0 +1,367 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>BPE Tokenizer - LLM From Scratch</title>
+<style>
+:root {
+  --bg: #1a1b26;
+  --sidebar-bg: #13141b;
+  --card-bg: #1e2030;
+  --text: #c0caf5;
+  --text-muted: #565f89;
+  --accent: #7aa2f7;
+  --accent2: #bb9af7;
+  --green: #9ece6a;
+  --orange: #ff9e64;
+  --red: #f7768e;
+  --cyan: #7dcfff;
+  --border: #292e42;
+  --code-bg: #15161e;
+  --font: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans SC', sans-serif;
+  --mono: 'SF Mono', 'Fira Code', 'Consolas', monospace;
+}
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { font-family: var(--font); background: var(--bg); color: var(--text); line-height: 1.8; display: flex; }
+.sidebar {
+  width: 280px; min-height: 100vh; background: var(--sidebar-bg); padding: 2rem 1.5rem;
+  position: fixed; top: 0; left: 0; overflow-y: auto; border-right: 1px solid var(--border);
+}
+.sidebar h2 { color: var(--accent); font-size: 1.1rem; margin-bottom: 1.5rem; padding-bottom: 0.5rem; border-bottom: 1px solid var(--border); }
+.sidebar a {
+  display: block; color: var(--text-muted); text-decoration: none; padding: 0.4rem 0;
+  font-size: 0.9rem; transition: color 0.2s;
+}
+.sidebar a:hover, .sidebar a.active { color: var(--accent); }
+.sidebar .chapter-nav { margin-top: 2rem; padding-top: 1rem; border-top: 1px solid var(--border); }
+.sidebar .chapter-nav a { color: var(--green); font-size: 0.85rem; }
+.main { margin-left: 280px; padding: 3rem 4rem; max-width: 900px; width: 100%; }
+h1 { font-size: 2.2rem; color: var(--accent); margin-bottom: 0.5rem; }
+.subtitle { color: var(--text-muted); font-size: 1rem; margin-bottom: 2rem; }
+h2 { font-size: 1.5rem; color: var(--accent2); margin: 2.5rem 0 1rem; padding-bottom: 0.3rem; border-bottom: 1px solid var(--border); }
+h3 { font-size: 1.2rem; color: var(--green); margin: 2rem 0 0.8rem; }
+h4 { font-size: 1.05rem; color: var(--orange); margin: 1.5rem 0 0.5rem; }
+p { margin-bottom: 1rem; }
+blockquote {
+  border-left: 3px solid var(--accent); padding: 0.8rem 1.2rem; margin: 1.2rem 0;
+  background: var(--card-bg); border-radius: 0 8px 8px 0; font-style: italic;
+}
+pre {
+  background: var(--code-bg); border: 1px solid var(--border); border-radius: 8px;
+  padding: 1.2rem; overflow-x: auto; margin: 1rem 0 1.5rem; font-size: 0.9rem;
+}
+code { font-family: var(--mono); }
+p code, li code {
+  background: var(--code-bg); padding: 0.15rem 0.4rem; border-radius: 4px;
+  font-size: 0.85em; color: var(--cyan);
+}
+table { width: 100%; border-collapse: collapse; margin: 1rem 0 1.5rem; }
+th { background: var(--card-bg); color: var(--accent); text-align: left; padding: 0.6rem 1rem; border: 1px solid var(--border); }
+td { padding: 0.6rem 1rem; border: 1px solid var(--border); }
+ul, ol { margin: 0.5rem 0 1.2rem 1.5rem; }
+li { margin-bottom: 0.3rem; }
+hr { border: none; border-top: 1px solid var(--border); margin: 2rem 0; }
+strong { color: var(--accent); }
+.diagram-container { background: var(--card-bg); border-radius: 12px; padding: 2rem; margin: 1.5rem 0; text-align: center; border: 1px solid var(--border); }
+.diagram-container svg { max-width: 100%; }
+.step-box { background: var(--card-bg); border-radius: 8px; padding: 1rem 1.2rem; margin: 0.8rem 0; border-left: 3px solid var(--green); }
+.step-box .step-num { color: var(--green); font-weight: bold; }
+.key-point { background: linear-gradient(135deg, var(--card-bg), #1a2332); border-radius: 8px; padding: 1rem 1.2rem; margin: 1rem 0; border: 1px solid var(--accent); }
+a { color: var(--accent); text-decoration: none; }
+a:hover { text-decoration: underline; }
+@media (max-width: 900px) {
+  .sidebar { display: none; }
+  .main { margin-left: 0; padding: 2rem 1.5rem; }
+}
+</style>
+</head>
+<body>
+<nav class="sidebar">
+  <h2>BPE Tokenizer</h2>
+  <a href="#why-tokenization">Why Tokenization?</a>
+  <a href="#bpe-algorithm">BPE Algorithm</a>
+  <a href="#step-by-step">Step-by-Step Example</a>
+  <a href="#why-bytes">Why Bytes?</a>
+  <a href="#code-walkthrough">Code Walkthrough</a>
+  <a href="#training">Training</a>
+  <a href="#encoding">Encoding</a>
+  <a href="#decoding">Decoding</a>
+  <a href="#data-structures">Key Data Structures</a>
+  <a href="#how-to-run">How to Run</a>
+  <a href="#exercises">Exercises</a>
+  <a href="#takeaways">Key Takeaways</a>
+  <a href="#further-reading">Further Reading</a>
+  <div class="chapter-nav">
+    <a href="../02_embedding/tutorial.html">Next: 02 Embedding &rarr;</a>
+  </div>
+</nav>
+
+<div class="main">
+<h1>BPE Tokenizer</h1>
+<p class="subtitle">Module 01 &mdash; Foundations, Chapter 01</p>
+
+<p>Large Language Models do not read text directly. They operate on numbers. A <strong>tokenizer</strong> is the bridge between human language and the model's numerical world. In this chapter we build a <a href="https://en.wikipedia.org/wiki/Byte_pair_encoding">Byte Pair Encoding (BPE)</a> tokenizer from scratch &mdash; the same fundamental algorithm used by GPT-2, LLaMA, and virtually every modern LLM.</p>
+
+<hr>
+
+<h2 id="why-tokenization">Why Tokenization?</h2>
+
+<p>A neural network is a mathematical function. It takes numbers in and produces numbers out. Raw text like <code>"Hello world"</code> is not numbers &mdash; it is a sequence of Unicode characters. We need a deterministic, reversible mapping from text to integers.</p>
+
+<p>The simplest approach: assign each character an ID.</p>
+
+<pre><code>H → 72, e → 101, l → 108, l → 108, o → 111, ...</code></pre>
+
+<p>This works, but it has problems:</p>
+
+<ol>
+  <li><strong>Vocabulary explosion.</strong> Unicode has over 149,000 characters. A character-level tokenizer needs a huge vocabulary, and rare characters cause issues.</li>
+  <li><strong>No semantic grouping.</strong> The word <code>"playing"</code> is split into 7 separate tokens. The model must learn from scratch that <code>p-l-a-y-i-n-g</code> is a single concept.</li>
+  <li><strong>Long sequences.</strong> More tokens per word means longer input sequences, which cost more compute.</li>
+</ol>
+
+<p><strong>BPE</strong> solves these problems by learning <strong>subword units</strong> &mdash; chunks that are larger than individual characters but smaller than whole words. Common patterns like <code>"the"</code>, <code>"ing"</code>, or <code>"tion"</code> become single tokens, while rare words are broken into known subwords.</p>
+
+<div class="diagram-container">
+<svg width="700" height="200" viewBox="0 0 700 200">
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M 0 0 L 10 5 L 0 10 z" fill="#7aa2f7"/></marker>
+  </defs>
+  <text x="350" y="20" text-anchor="middle" fill="#c0caf5" font-size="14" font-weight="bold">Tokenization: Text → Tokens</text>
+  <rect x="20" y="50" width="200" height="50" rx="8" fill="#1e2030" stroke="#7aa2f7"/>
+  <text x="120" y="80" text-anchor="middle" fill="#c0caf5" font-size="14">"Hello world"</text>
+  <line x1="230" y1="75" x2="280" y2="75" stroke="#7aa2f7" marker-end="url(#arrow)"/>
+  <rect x="290" y="40" width="120" height="70" rx="8" fill="#1e2030" stroke="#bb9af7"/>
+  <text x="350" y="65" text-anchor="middle" fill="#bb9af7" font-size="12">Tokenizer</text>
+  <text x="350" y="85" text-anchor="middle" fill="#565f89" font-size="11">(BPE)</text>
+  <line x1="420" y1="75" x2="470" y2="75" stroke="#7aa2f7" marker-end="url(#arrow)"/>
+  <rect x="480" y="50" width="200" height="50" rx="8" fill="#1e2030" stroke="#9ece6a"/>
+  <text x="580" y="80" text-anchor="middle" fill="#9ece6a" font-size="14">[15496, 995]</text>
+  <text x="350" y="150" text-anchor="middle" fill="#565f89" font-size="12">Character → Subword → Token IDs</text>
+  <rect x="80" y="165" width="80" height="25" rx="4" fill="#15161e" stroke="#565f89"/>
+  <text x="120" y="182" text-anchor="middle" fill="#f7768e" font-size="11">7 tokens</text>
+  <text x="210" y="182" fill="#565f89" font-size="11">→</text>
+  <rect x="230" y="165" width="80" height="25" rx="4" fill="#15161e" stroke="#565f89"/>
+  <text x="270" y="182" text-anchor="middle" fill="#9ece6a" font-size="11">2 tokens</text>
+</svg>
+</div>
+
+<hr>
+
+<h2 id="bpe-algorithm">The BPE Algorithm</h2>
+
+<p>BPE stands for <strong>Byte Pair Encoding</strong>. It was originally a data compression algorithm (<a href="https://www.derczynski.com/papers/archive/bpe_gage.pdf">Gage, 1994</a>). The key insight is simple:</p>
+
+<blockquote>Repeatedly find the most frequent adjacent pair of tokens and merge them into a new token.</blockquote>
+
+<div class="diagram-container">
+<svg width="650" height="180" viewBox="0 0 650 180">
+  <text x="325" y="20" text-anchor="middle" fill="#c0caf5" font-size="14" font-weight="bold">BPE Training Loop</text>
+  <rect x="30" y="50" width="130" height="40" rx="6" fill="#1e2030" stroke="#7aa2f7"/>
+  <text x="95" y="75" text-anchor="middle" fill="#7aa2f7" font-size="12">Count Pairs</text>
+  <line x1="170" y1="70" x2="220" y2="70" stroke="#565f89" marker-end="url(#arrow)"/>
+  <rect x="230" y="50" width="150" height="40" rx="6" fill="#1e2030" stroke="#bb9af7"/>
+  <text x="305" y="75" text-anchor="middle" fill="#bb9af7" font-size="12">Find Most Frequent</text>
+  <line x1="390" y1="70" x2="440" y2="70" stroke="#565f89" marker-end="url(#arrow)"/>
+  <rect x="450" y="50" width="130" height="40" rx="6" fill="#1e2030" stroke="#9ece6a"/>
+  <text x="515" y="75" text-anchor="middle" fill="#9ece6a" font-size="12">Merge Pair</text>
+  <line x1="515" y1="95" x2="515" y2="125" stroke="#565f89" marker-end="url(#arrow)"/>
+  <rect x="430" y="130" width="170" height="35" rx="6" fill="#1e2030" stroke="#ff9e64"/>
+  <text x="515" y="152" text-anchor="middle" fill="#ff9e64" font-size="11">Add to Vocabulary</text>
+  <line x1="430" y1="147" x2="370" y2="147" stroke="#565f89" marker-end="url(#arrow)"/>
+  <path d="M 370 147 L 370 70 L 230 70" stroke="#565f89" fill="none" marker-end="url(#arrow)"/>
+  <text x="200" y="145" fill="#565f89" font-size="11">Repeat num_merges times</text>
+</svg>
+</div>
+
+<h3 id="step-by-step">Step-by-Step Example</h3>
+
+<p>Let's walk through BPE on a tiny corpus:</p>
+
+<pre><code>corpus = "aa ab aa ab aa ab"</code></pre>
+
+<div class="step-box">
+<span class="step-num">Step 0: Initialize</span><br>
+Split the corpus into words and count frequencies:
+<pre><code>"aa" → 3 times
+"ab" → 3 times</code></pre>
+Represent each word as a sequence of bytes:
+<pre><code>"a", "a" → 3
+"a", "b" → 3</code></pre>
+Our initial vocabulary is the 256 possible byte values (0–255).
+</div>
+
+<div class="step-box">
+<span class="step-num">Step 1: Count pairs and merge</span><br>
+Count all adjacent pairs across all words:
+<pre><code>(a, a) → 3 occurrences  (from "aa")
+(a, b) → 3 occurrences  (from "ab")</code></pre>
+Both pairs have the same frequency (3). Ties are broken arbitrarily. Let's say we pick <code>(a, a)</code>.
+<br><br>
+Merge <code>(a, a)</code> into a new token <code>aa</code>. It gets ID 256.
+<pre><code>word_freqs becomes:
+  (aa,) → 3      # was (a, a)
+  (a, b) → 3     # unchanged</code></pre>
+</div>
+
+<div class="step-box">
+<span class="step-num">Step 2: Count pairs and merge again</span><br>
+<pre><code>(a, b) → 3 occurrences</code></pre>
+Merge <code>(a, b)</code> into <code>ab</code>. It gets ID 257.
+<pre><code>word_freqs becomes:
+  (aa,) → 3
+  (ab,) → 3</code></pre>
+</div>
+
+<div class="step-box">
+<span class="step-num">Step 3: No more pairs</span><br>
+Every word is now a single token. There are no adjacent pairs to merge. The algorithm stops.
+</div>
+
+<div class="key-point">
+<strong>Result:</strong><br>
+Vocabulary: 256 base bytes + <code>aa</code> (ID 256) + <code>ab</code> (ID 257) = 258 tokens<br>
+Merges learned: <code>['a' + 'a' → 'aa']</code>, <code>['a' + 'b' → 'ab']</code><br><br>
+The input text <code>"aa ab aa ab"</code> can now be encoded as <code>[256, 257, 256, 257]</code> &mdash; just 4 tokens instead of 11 bytes.
+</div>
+
+<h3 id="why-bytes">Why Bytes?</h3>
+
+<p>Modern BPE implementations (including ours) operate on <strong>bytes</strong>, not characters. This has a major advantage: every possible string can be represented, even if it contains unusual Unicode, emojis, or binary data. The base vocabulary is always exactly 256 tokens &mdash; one for each possible byte value.</p>
+
+<hr>
+
+<h2 id="code-walkthrough">Code Walkthrough</h2>
+
+<p>Here is how the core <code>BPETokenizer</code> class in <code>tokenizer.py</code> works.</p>
+
+<h3 id="training">Training: <code>train(corpus)</code></h3>
+
+<pre><code>def train(self, corpus: str):
+    self._build_base_vocab()           # 1. Initialize 256-byte vocab
+    words = corpus.split()             # 2. Split into words
+    word_freqs = ...                   # 3. Count word frequencies
+    # Each word is a tuple of single-byte tokens
+
+    for _ in range(num_merges):        # 4. Repeat (vocab_size - 256) times
+        pair_counts = self._get_pair_counts(word_freqs)  # Count pairs
+        best_pair = max(pair_counts, key=...)             # Find most frequent
+        merged = best_pair[0] + best_pair[1]              # Concatenate bytes
+        self.vocab[new_id] = merged    # Add to vocabulary
+        self.merges.append(best_pair)  # Record the merge rule
+        word_freqs = self._merge_pair(word_freqs, best_pair)  # Apply merge</code></pre>
+
+<p>The training loop is the heart of BPE. Each iteration finds the most common pair and merges it. The <code>word_freqs</code> dictionary is updated in place, so the next iteration sees the merged tokens.</p>
+
+<h3 id="encoding">Encoding: <code>encode(text)</code></h3>
+
+<pre><code>def encode(self, text: str) -> List[int]:
+    tokens = [bytes([b]) for b in text.encode("utf-8")]  # Start with bytes
+    for pair in self.merges:              # Apply each merge rule in order
+        tokens = merge(tokens, pair)
+    return [self.inverse_vocab[t] for t in tokens]  # Convert to IDs</code></pre>
+
+<p>Encoding applies the learned merge rules <strong>in the same order they were discovered during training</strong>. This greedy left-to-right application is what makes encoding fast and deterministic.</p>
+
+<h3 id="decoding">Decoding: <code>decode(ids)</code></h3>
+
+<pre><code>def decode(self, ids: List[int]) -> str:
+    token_bytes = b"".join(self.vocab[id] for id in ids)
+    return token_bytes.decode("utf-8", errors="replace")</code></pre>
+
+<p>Decoding is straightforward: look up each ID in the vocabulary, concatenate the bytes, and decode to a string. The <code>errors="replace"</code> flag ensures robustness against invalid byte sequences.</p>
+
+<h3 id="data-structures">Key Data Structures</h3>
+
+<table>
+  <tr><th>Structure</th><th>Description</th></tr>
+  <tr><td><code>vocab</code></td><td>Maps token ID (int) to bytes. Size = 256 + number of merges.</td></tr>
+  <tr><td><code>inverse_vocab</code></td><td>Reverse lookup &mdash; bytes to ID. Used during encoding.</td></tr>
+  <tr><td><code>merges</code></td><td>Ordered list of <code>(bytes, bytes)</code> pairs learned during training. This is the "model" &mdash; it defines how to compress text.</td></tr>
+</table>
+
+<hr>
+
+<h2 id="how-to-run">How to Run</h2>
+
+<h3>Train the Tokenizer</h3>
+
+<pre><code>cd /path/to/llm-from-scratch
+python 01-foundations/01_tokenizer/train_tokenizer.py</code></pre>
+
+<p>Expected output:</p>
+
+<pre><code>Vocabulary size: 300
+Number of merges: 44
+
+Original: The quick brown fox
+Token IDs: [84, 104, 101, ...]
+Decoded: The quick brown fox
+Roundtrip OK: True
+
+First 10 merges:
+  1. b' ' + b't' -> b' t'
+  2. b' ' + b'a' -> b' a'
+  ...</code></pre>
+
+<h3>Run Tests</h3>
+
+<pre><code>pytest 01-foundations/01_tokenizer/tests.py -v</code></pre>
+
+<hr>
+
+<h2 id="exercises">Exercises</h2>
+
+<p>Open <code>exercise.py</code> to practice implementing BPE yourself. The file contains a <code>BPETokenizerExercise</code> class with <code>TODO</code> placeholders for each key method.</p>
+
+<h3>Exercise Order</h3>
+
+<ol>
+  <li><code>_get_pair_counts</code> &mdash; Count adjacent pairs across all words</li>
+  <li><code>_merge_pair</code> &mdash; Replace all occurrences of a pair with the merged token</li>
+  <li><code>train</code> &mdash; Wire everything together into the training loop</li>
+  <li><code>encode</code> &mdash; Apply merge rules to encode new text</li>
+  <li><code>decode</code> &mdash; Convert token IDs back to text</li>
+</ol>
+
+<h3>Tips</h3>
+
+<ul>
+  <li>Start with <code>_get_pair_counts</code>. It is the simplest method and builds intuition for how BPE counts frequencies.</li>
+  <li><code>_merge_pair</code> is the trickiest. Walk through the word tuple left to right, building a new list.</li>
+  <li>Once you have <code>_get_pair_counts</code> and <code>_merge_pair</code>, the <code>train</code> method is mostly wiring them together.</li>
+  <li><code>encode</code> reuses the same merge logic as <code>_merge_pair</code>, but on a flat list instead of a dict.</li>
+</ul>
+
+<h3>Verify Your Solution</h3>
+
+<pre><code>pytest 01-foundations/01_tokenizer/test_exercise.py -v</code></pre>
+
+<hr>
+
+<h2 id="takeaways">Key Takeaways</h2>
+
+<div class="key-point">
+<ol>
+  <li><strong>Tokenization is a compression problem.</strong> BPE finds recurring byte patterns in your training corpus and merges them into single tokens. More frequent patterns get shorter representations.</li>
+  <li><strong>BPE operates on bytes, not characters.</strong> This means it can handle any text &mdash; English, Chinese, emojis, or binary &mdash; without special rules. The base vocabulary is always 256 tokens.</li>
+  <li><strong>The merge order matters.</strong> Encoding applies merge rules in the exact order they were learned. Different training corpora produce different merge rules and thus different tokenizations.</li>
+  <li><strong>Subword tokenization balances vocabulary size and sequence length.</strong> Common words become single tokens; rare words are split into known subwords. This keeps the vocabulary manageable while representing any text.</li>
+</ol>
+</div>
+
+<hr>
+
+<h2 id="further-reading">Further Reading</h2>
+
+<ul>
+  <li><a href="https://arxiv.org/abs/1608.00221">Original BPE paper (Sennrich et al., 2016)</a> &mdash; BPE applied to machine translation</li>
+  <li><a href="https://huggingface.co/docs/tokenizers/">Hugging Face Tokenizers</a> &mdash; Production-grade tokenization library</li>
+  <li><a href="https://www.youtube.com/watch?v=zduSFxRajkE">Let's build the GPT Tokenizer (Karpathy)</a> &mdash; Video walkthrough of BPE</li>
+  <li><a href="https://github.com/karpathy/minbpe">minbpe</a> &mdash; Minimal BPE implementation by Andrej Karpathy</li>
+</ul>
+
+</div>
+</body>
+</html>

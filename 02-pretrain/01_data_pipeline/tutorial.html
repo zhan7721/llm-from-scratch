@@ -1,0 +1,540 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Data Pipeline - LLM Pretraining</title>
+<style>
+:root {
+  --bg: #0f1117;
+  --bg-secondary: #161822;
+  --sidebar-bg: #1a1d2e;
+  --text: #e2e8f0;
+  --text-muted: #94a3b8;
+  --accent: #60a5fa;
+  --accent2: #a78bfa;
+  --accent3: #34d399;
+  --border: #2d3148;
+  --code-bg: #1e2235;
+  --inline-code-bg: #2a2f45;
+}
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  line-height: 1.7;
+  display: flex;
+}
+.sidebar {
+  width: 280px;
+  background: var(--sidebar-bg);
+  border-right: 1px solid var(--border);
+  padding: 24px 0;
+  position: fixed;
+  top: 0; left: 0; bottom: 0;
+  overflow-y: auto;
+  z-index: 100;
+}
+.sidebar h2 {
+  color: var(--accent);
+  font-size: 14px;
+  text-transform: uppercase;
+  letter-spacing: 1.5px;
+  padding: 0 20px 16px;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 12px;
+}
+.sidebar a {
+  display: block;
+  color: var(--text-muted);
+  text-decoration: none;
+  padding: 8px 20px;
+  font-size: 14px;
+  transition: all 0.2s;
+  border-left: 3px solid transparent;
+}
+.sidebar a:hover, .sidebar a.active {
+  color: var(--accent);
+  background: rgba(96,165,250,0.08);
+  border-left-color: var(--accent);
+}
+.sidebar .chapter-link {
+  color: var(--accent2);
+  font-weight: 600;
+  margin-top: 8px;
+}
+.content {
+  margin-left: 280px;
+  flex: 1;
+  padding: 48px 64px;
+  max-width: 960px;
+}
+h1 {
+  font-size: 2.4em;
+  color: #fff;
+  margin-bottom: 8px;
+  letter-spacing: -0.5px;
+}
+.subtitle {
+  color: var(--accent2);
+  font-size: 1.1em;
+  margin-bottom: 32px;
+  padding-bottom: 24px;
+  border-bottom: 1px solid var(--border);
+}
+h2 {
+  font-size: 1.6em;
+  color: #fff;
+  margin-top: 48px;
+  margin-bottom: 16px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--border);
+}
+h3 {
+  font-size: 1.2em;
+  color: var(--accent);
+  margin-top: 32px;
+  margin-bottom: 12px;
+}
+p { margin-bottom: 16px; }
+ul, ol { margin-bottom: 16px; padding-left: 24px; }
+li { margin-bottom: 6px; }
+pre {
+  background: var(--code-bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 20px;
+  overflow-x: auto;
+  margin-bottom: 20px;
+  font-size: 14px;
+  line-height: 1.6;
+}
+code {
+  font-family: "SF Mono", "Fira Code", "JetBrains Mono", monospace;
+  font-size: 0.9em;
+}
+p code, li code {
+  background: var(--inline-code-bg);
+  padding: 2px 6px;
+  border-radius: 4px;
+  color: var(--accent3);
+}
+.kw { color: #c792ea; }
+.fn { color: #82aaff; }
+.str { color: #c3e88d; }
+.cm { color: #546e7a; }
+.num { color: #f78c6c; }
+.op { color: #89ddff; }
+.dec { color: #ffcb6b; }
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-bottom: 20px;
+}
+th {
+  background: var(--sidebar-bg);
+  color: var(--accent);
+  text-align: left;
+  padding: 10px 16px;
+  font-size: 14px;
+  border-bottom: 2px solid var(--border);
+}
+td {
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--border);
+  font-size: 14px;
+}
+.diagram-container {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 32px;
+  margin: 24px 0;
+  text-align: center;
+}
+.diagram-container svg { max-width: 100%; }
+.callout {
+  background: rgba(96,165,250,0.08);
+  border-left: 4px solid var(--accent);
+  padding: 16px 20px;
+  margin: 20px 0;
+  border-radius: 0 8px 8px 0;
+  font-size: 14px;
+}
+.callout strong { color: var(--accent); }
+.prereq {
+  background: rgba(167,139,250,0.08);
+  border-left: 4px solid var(--accent2);
+  padding: 16px 20px;
+  margin: 20px 0;
+  border-radius: 0 8px 8px 0;
+  font-size: 14px;
+}
+.file-table { margin: 20px 0; }
+.summary-table td:first-child {
+  font-weight: 600;
+  color: var(--accent3);
+  white-space: nowrap;
+}
+@media (max-width: 900px) {
+  .sidebar { display: none; }
+  .content { margin-left: 0; padding: 24px 20px; }
+}
+</style>
+</head>
+<body>
+<nav class="sidebar">
+  <h2>Data Pipeline</h2>
+  <a href="#why">Why the Data Pipeline Matters</a>
+  <a href="#dataset">Dataset Design</a>
+  <a href="#dynamic-padding">Dynamic Padding</a>
+  <a href="#packing">Packing</a>
+  <a href="#dataloader">DataLoader Configuration</a>
+  <a href="#walkthrough">Code Walkthrough</a>
+  <a href="#exercises">Exercises</a>
+  <a href="#tests">Running Tests</a>
+  <a href="#summary">Summary</a>
+  <a href="#next">Next Steps</a>
+  <div style="margin-top:24px; padding-top:16px; border-top:1px solid var(--border);">
+    <a class="chapter-link" href="../02_data_engineering/tutorial.html">Chapter 02: Data Engineering</a>
+    <a class="chapter-link" href="../03_training_loop/tutorial.html">Chapter 03: Training Loop</a>
+    <a class="chapter-link" href="../04_distributed_training/tutorial.html">Chapter 04: Distributed Training</a>
+    <a class="chapter-link" href="../05_scaling_laws/tutorial.html">Chapter 05: Scaling Laws</a>
+    <a class="chapter-link" href="../06_evaluation/tutorial.html">Chapter 06: Evaluation</a>
+  </div>
+</nav>
+
+<main class="content">
+<h1>Data Pipeline</h1>
+<p class="subtitle">Module 02 -- Pretraining, Chapter 01</p>
+
+<p>Before a language model can learn anything, it needs a steady stream of well-structured training data. The data pipeline is the plumbing that turns raw token IDs into batches of tensors ready for the GPU. A poorly designed pipeline wastes compute on padding, shuffles data incorrectly, or produces batches with mismatched shapes. This chapter builds the pipeline from scratch.</p>
+
+<div class="prereq">
+  <strong>Prerequisites:</strong> Basic PyTorch (<code>Dataset</code>, <code>DataLoader</code>, <code>torch.tensor</code>); Understanding of tokenization (Module 01, Chapter 01).
+</div>
+
+<h3>Files</h3>
+<table class="file-table">
+  <tr><th>File</th><th>Purpose</th></tr>
+  <tr><td><code>data_pipeline.py</code></td><td>Core implementation: datasets, collation, packing</td></tr>
+  <tr><td><code>exercise.py</code></td><td>Fill-in-the-blank exercises to reinforce understanding</td></tr>
+  <tr><td><code>solution.py</code></td><td>Reference solutions for the exercises</td></tr>
+  <tr><td><code>tests.py</code></td><td>pytest tests for correctness</td></tr>
+  <tr><td><code>test_exercise.py</code></td><td>pytest tests for the exercise version</td></tr>
+</table>
+
+<h2 id="why">Why the Data Pipeline Matters</h2>
+<p>Pretraining an LLM means processing billions of tokens. Even a small inefficiency -- like padding every sequence to a fixed 2048 tokens when the average length is 300 -- multiplies across billions of steps and wastes enormous amounts of compute. The data pipeline must:</p>
+<ol>
+  <li><strong>Split tokens into fixed-length chunks</strong> so every sample has the same shape.</li>
+  <li><strong>Create input/target pairs</strong> with a one-token shift (the model learns to predict the next token).</li>
+  <li><strong>Batch samples efficiently</strong> without wasting GPU cycles on padding.</li>
+  <li><strong>Shuffle data</strong> so the model does not memorize the order of the training corpus.</li>
+</ol>
+
+<div class="diagram-container">
+  <svg viewBox="0 0 720 200" xmlns="http://www.w3.org/2000/svg" width="720">
+    <defs>
+      <marker id="arrow1" markerWidth="10" markerHeight="7" refX="10" refY="3.5" orient="auto">
+        <polygon points="0 0, 10 3.5, 0 7" fill="#60a5fa"/>
+      </marker>
+    </defs>
+    <!-- Boxes -->
+    <rect x="10" y="70" width="120" height="60" rx="8" fill="#1e2235" stroke="#60a5fa" stroke-width="1.5"/>
+    <text x="70" y="95" text-anchor="middle" fill="#e2e8f0" font-size="13" font-family="sans-serif">Raw Token IDs</text>
+    <text x="70" y="115" text-anchor="middle" fill="#94a3b8" font-size="11" font-family="monospace">[0, 1, 2, 3, ...]</text>
+
+    <line x1="130" y1="100" x2="170" y2="100" stroke="#60a5fa" stroke-width="2" marker-end="url(#arrow1)"/>
+
+    <rect x="170" y="70" width="120" height="60" rx="8" fill="#1e2235" stroke="#a78bfa" stroke-width="1.5"/>
+    <text x="230" y="95" text-anchor="middle" fill="#e2e8f0" font-size="13" font-family="sans-serif">Split Chunks</text>
+    <text x="230" y="115" text-anchor="middle" fill="#94a3b8" font-size="11" font-family="monospace">seq_len = 512</text>
+
+    <line x1="290" y1="100" x2="330" y2="100" stroke="#60a5fa" stroke-width="2" marker-end="url(#arrow1)"/>
+
+    <rect x="330" y="70" width="120" height="60" rx="8" fill="#1e2235" stroke="#34d399" stroke-width="1.5"/>
+    <text x="390" y="95" text-anchor="middle" fill="#e2e8f0" font-size="13" font-family="sans-serif">Shift Labels</text>
+    <text x="390" y="115" text-anchor="middle" fill="#94a3b8" font-size="11" font-family="monospace">input / label</text>
+
+    <line x1="450" y1="100" x2="490" y2="100" stroke="#60a5fa" stroke-width="2" marker-end="url(#arrow1)"/>
+
+    <rect x="490" y="70" width="120" height="60" rx="8" fill="#1e2235" stroke="#f78c6c" stroke-width="1.5"/>
+    <text x="550" y="95" text-anchor="middle" fill="#e2e8f0" font-size="13" font-family="sans-serif">Collate Batch</text>
+    <text x="550" y="115" text-anchor="middle" fill="#94a3b8" font-size="11" font-family="monospace">pad / mask</text>
+
+    <line x1="610" y1="100" x2="640" y2="100" stroke="#60a5fa" stroke-width="2" marker-end="url(#arrow1)"/>
+
+    <rect x="640" y="70" width="70" height="60" rx="8" fill="#1e2235" stroke="#ffcb6b" stroke-width="1.5"/>
+    <text x="675" y="95" text-anchor="middle" fill="#e2e8f0" font-size="13" font-family="sans-serif">GPU</text>
+    <text x="675" y="115" text-anchor="middle" fill="#94a3b8" font-size="11" font-family="monospace">tensor</text>
+  </svg>
+</div>
+
+<h2 id="dataset">Dataset Design: Contiguous Sequences</h2>
+<p>The simplest approach is <code>PretrainDataset</code>. It takes a flat list of token IDs and splits it into non-overlapping chunks of length <code>seq_len</code>.</p>
+
+<div class="diagram-container">
+  <svg viewBox="0 0 620 160" xmlns="http://www.w3.org/2000/svg" width="620">
+    <text x="10" y="25" fill="#94a3b8" font-size="13" font-family="sans-serif">Tokens:</text>
+    <!-- Token boxes -->
+    <rect x="80" y="10" width="40" height="30" rx="4" fill="#1e2235" stroke="#60a5fa" stroke-width="1"/>
+    <text x="100" y="30" text-anchor="middle" fill="#e2e8f0" font-size="12" font-family="monospace">0</text>
+    <rect x="125" y="10" width="40" height="30" rx="4" fill="#1e2235" stroke="#60a5fa" stroke-width="1"/>
+    <text x="145" y="30" text-anchor="middle" fill="#e2e8f0" font-size="12" font-family="monospace">1</text>
+    <rect x="170" y="10" width="40" height="30" rx="4" fill="#1e2235" stroke="#60a5fa" stroke-width="1"/>
+    <text x="190" y="30" text-anchor="middle" fill="#e2e8f0" font-size="12" font-family="monospace">2</text>
+    <rect x="215" y="10" width="40" height="30" rx="4" fill="#1e2235" stroke="#60a5fa" stroke-width="1"/>
+    <text x="235" y="30" text-anchor="middle" fill="#e2e8f0" font-size="12" font-family="monospace">3</text>
+    <rect x="260" y="10" width="40" height="30" rx="4" fill="#1e2235" stroke="#60a5fa" stroke-width="1"/>
+    <text x="280" y="30" text-anchor="middle" fill="#e2e8f0" font-size="12" font-family="monospace">4</text>
+    <rect x="305" y="10" width="40" height="30" rx="4" fill="#1e2235" stroke="#60a5fa" stroke-width="1"/>
+    <text x="325" y="30" text-anchor="middle" fill="#e2e8f0" font-size="12" font-family="monospace">5</text>
+    <rect x="350" y="10" width="40" height="30" rx="4" fill="#1e2235" stroke="#60a5fa" stroke-width="1"/>
+    <text x="370" y="30" text-anchor="middle" fill="#e2e8f0" font-size="12" font-family="monospace">6</text>
+    <rect x="395" y="10" width="40" height="30" rx="4" fill="#1e2235" stroke="#60a5fa" stroke-width="1"/>
+    <text x="415" y="30" text-anchor="middle" fill="#e2e8f0" font-size="12" font-family="monospace">7</text>
+    <rect x="440" y="10" width="40" height="30" rx="4" fill="#1e2235" stroke="#60a5fa" stroke-width="1"/>
+    <text x="460" y="30" text-anchor="middle" fill="#e2e8f0" font-size="12" font-family="monospace">8</text>
+    <rect x="485" y="10" width="40" height="30" rx="4" fill="#1e2235" stroke="#60a5fa" stroke-width="1"/>
+    <text x="505" y="30" text-anchor="middle" fill="#e2e8f0" font-size="12" font-family="monospace">9</text>
+    <rect x="530" y="10" width="40" height="30" rx="4" fill="#1e2235" stroke="#60a5fa" stroke-width="1"/>
+    <text x="550" y="30" text-anchor="middle" fill="#e2e8f0" font-size="12" font-family="monospace">10</text>
+    <rect x="575" y="10" width="40" height="30" rx="4" fill="#1e2235" stroke="#60a5fa" stroke-width="1"/>
+    <text x="595" y="30" text-anchor="middle" fill="#e2e8f0" font-size="12" font-family="monospace">11</text>
+
+    <text x="10" y="80" fill="#94a3b8" font-size="13" font-family="sans-serif">Chunk 0:</text>
+    <rect x="80" y="63" width="175" height="30" rx="4" fill="rgba(96,165,250,0.15)" stroke="#60a5fa" stroke-width="1.5"/>
+    <text x="167" y="83" text-anchor="middle" fill="#60a5fa" font-size="12" font-family="monospace">input = [0, 1, 2, 3]</text>
+    <text x="310" y="83" fill="#94a3b8" font-size="12" font-family="sans-serif">label = [1, 2, 3, 4]</text>
+
+    <text x="10" y="120" fill="#94a3b8" font-size="13" font-family="sans-serif">Chunk 1:</text>
+    <rect x="80" y="103" width="175" height="30" rx="4" fill="rgba(167,139,250,0.15)" stroke="#a78bfa" stroke-width="1.5"/>
+    <text x="167" y="123" text-anchor="middle" fill="#a78bfa" font-size="12" font-family="monospace">input = [4, 5, 6, 7]</text>
+    <text x="310" y="123" fill="#94a3b8" font-size="12" font-family="sans-serif">label = [5, 6, 7, 8]</text>
+
+    <text x="10" y="155" fill="#94a3b8" font-size="11" font-family="sans-serif">seq_len = 4</text>
+  </svg>
+</div>
+
+<p>Key details:</p>
+<ul>
+  <li><strong>Truncation</strong>: We drop any trailing tokens that do not fill a complete chunk. This keeps all samples the same length.</li>
+  <li><strong>Input/target shift</strong>: <code>labels</code> is <code>input_ids</code> shifted one position to the right. This is the standard autoregressive language modeling objective -- given tokens up to position <code>t</code>, predict the token at position <code>t+1</code>.</li>
+  <li><strong>No overlap</strong>: Chunks are contiguous and non-overlapping. This is the simplest strategy. Overlapping (sliding window) is also possible but doubles memory usage.</li>
+</ul>
+
+<pre><code><span class="kw">class</span> <span class="fn">PretrainDataset</span>(Dataset):
+    <span class="kw">def</span> <span class="fn">__init__</span>(<span class="dec">self</span>, token_ids, seq_len):
+        <span class="dec">self</span>.seq_len = seq_len
+        n_tokens = (<span class="fn">len</span>(token_ids) // seq_len) * seq_len
+        <span class="dec">self</span>.data = torch.tensor(token_ids[:n_tokens], dtype=torch.long)
+
+    <span class="kw">def</span> <span class="fn">__len__</span>(<span class="dec">self</span>):
+        <span class="kw">return</span> <span class="fn">len</span>(<span class="dec">self</span>.data) // <span class="dec">self</span>.seq_len
+
+    <span class="kw">def</span> <span class="fn">__getitem__</span>(<span class="dec">self</span>, idx):
+        start = idx * <span class="dec">self</span>.seq_len
+        chunk = <span class="dec">self</span>.data[start : start + <span class="dec">self</span>.seq_len + <span class="num">1</span>]
+        <span class="kw">return</span> {
+            <span class="str">"input_ids"</span>: chunk[:-<span class="num">1</span>],
+            <span class="str">"labels"</span>: chunk[<span class="num">1</span>:],
+        }</code></pre>
+
+<h2 id="dynamic-padding">Dynamic Padding</h2>
+<p>When sequences in a batch have different lengths, we must pad them to the same length so they can be stacked into a single tensor. There are two strategies:</p>
+
+<h3>Fixed padding (wasteful)</h3>
+<p>Pad every sequence to a global maximum (e.g., 2048). If most sequences are 300 tokens, you waste 85% of your compute on padding.</p>
+
+<h3>Dynamic padding (efficient)</h3>
+<p>Pad each batch to the length of the longest sequence <em>in that batch</em>. If a batch has sequences of lengths [300, 280, 310, 295], you pad to 310 instead of 2048.</p>
+
+<div class="diagram-container">
+  <svg viewBox="0 0 600 180" xmlns="http://www.w3.org/2000/svg" width="600">
+    <text x="20" y="25" fill="#60a5fa" font-size="14" font-weight="bold" font-family="sans-serif">Fixed Padding (wasteful)</text>
+    <rect x="20" y="35" width="560" height="25" rx="4" fill="rgba(96,165,250,0.15)" stroke="#60a5fa" stroke-width="1"/>
+    <rect x="20" y="35" width="140" height="25" rx="4" fill="rgba(96,165,250,0.3)"/>
+    <text x="90" y="52" text-anchor="middle" fill="#e2e8f0" font-size="11" font-family="sans-serif">300 tokens</text>
+    <text x="400" y="52" text-anchor="middle" fill="#546e7a" font-size="11" font-family="sans-serif">1748 padding tokens (85% waste!)</text>
+
+    <text x="20" y="95" fill="#34d399" font-size="14" font-weight="bold" font-family="sans-serif">Dynamic Padding (efficient)</text>
+    <rect x="20" y="105" width="250" height="25" rx="4" fill="rgba(52,211,153,0.15)" stroke="#34d399" stroke-width="1"/>
+    <rect x="20" y="105" width="140" height="25" rx="4" fill="rgba(52,211,153,0.3)"/>
+    <text x="90" y="122" text-anchor="middle" fill="#e2e8f0" font-size="11" font-family="sans-serif">300 tokens</text>
+    <rect x="160" y="105" width="30" height="25" rx="4" fill="rgba(52,211,153,0.08)" stroke="#34d399" stroke-width="1" stroke-dasharray="4"/>
+    <text x="240" y="122" text-anchor="middle" fill="#546e7a" font-size="11" font-family="sans-serif">10 pad</text>
+  </svg>
+</div>
+
+<pre><code><span class="kw">def</span> <span class="fn">dynamic_pad_collate</span>(batch, pad_id=<span class="num">0</span>):
+    max_len = <span class="fn">max</span>(item[<span class="str">"input_ids"</span>].shape[<span class="num">0</span>] <span class="kw">for</span> item <span class="kw">in</span> batch)
+    <span class="cm"># ... pad each sequence to max_len ...</span></code></pre>
+
+<p>The collate function also produces:</p>
+<ul>
+  <li><strong><code>attention_mask</code></strong>: A binary tensor (1 for real tokens, 0 for padding). The model uses this to avoid attending to padding positions.</li>
+  <li><strong><code>labels</code> with -100</strong>: PyTorch's <code>CrossEntropyLoss</code> ignores positions with label -100. We set padded positions to -100 so the loss is only computed on real tokens.</li>
+</ul>
+
+<h2 id="packing">Packing: Eliminating Padding Waste Entirely</h2>
+<p>Dynamic padding helps, but even within a batch, shorter sequences still waste some space. <strong>Packing</strong> takes this further by eliminating padding completely.</p>
+<p>The idea: concatenate all documents into one long token stream, then split into fixed-length blocks.</p>
+
+<div class="diagram-container">
+  <svg viewBox="0 0 650 220" xmlns="http://www.w3.org/2000/svg" width="650">
+    <!-- Document A -->
+    <text x="10" y="25" fill="#60a5fa" font-size="13" font-family="sans-serif">Document A:</text>
+    <rect x="110" y="10" width="35" height="28" rx="4" fill="rgba(96,165,250,0.2)" stroke="#60a5fa" stroke-width="1"/>
+    <text x="127" y="29" text-anchor="middle" fill="#e2e8f0" font-size="11" font-family="monospace">a1</text>
+    <rect x="150" y="10" width="35" height="28" rx="4" fill="rgba(96,165,250,0.2)" stroke="#60a5fa" stroke-width="1"/>
+    <text x="167" y="29" text-anchor="middle" fill="#e2e8f0" font-size="11" font-family="monospace">a2</text>
+    <rect x="190" y="10" width="35" height="28" rx="4" fill="rgba(96,165,250,0.2)" stroke="#60a5fa" stroke-width="1"/>
+    <text x="207" y="29" text-anchor="middle" fill="#e2e8f0" font-size="11" font-family="monospace">a3</text>
+    <rect x="230" y="10" width="35" height="28" rx="4" fill="rgba(96,165,250,0.2)" stroke="#60a5fa" stroke-width="1"/>
+    <text x="247" y="29" text-anchor="middle" fill="#e2e8f0" font-size="11" font-family="monospace">a4</text>
+    <rect x="270" y="10" width="35" height="28" rx="4" fill="rgba(96,165,250,0.2)" stroke="#60a5fa" stroke-width="1"/>
+    <text x="287" y="29" text-anchor="middle" fill="#e2e8f0" font-size="11" font-family="monospace">a5</text>
+
+    <!-- Document B -->
+    <text x="10" y="60" fill="#a78bfa" font-size="13" font-family="sans-serif">Document B:</text>
+    <rect x="110" y="45" width="35" height="28" rx="4" fill="rgba(167,139,250,0.2)" stroke="#a78bfa" stroke-width="1"/>
+    <text x="127" y="64" text-anchor="middle" fill="#e2e8f0" font-size="11" font-family="monospace">b1</text>
+    <rect x="150" y="45" width="35" height="28" rx="4" fill="rgba(167,139,250,0.2)" stroke="#a78bfa" stroke-width="1"/>
+    <text x="167" y="64" text-anchor="middle" fill="#e2e8f0" font-size="11" font-family="monospace">b2</text>
+    <rect x="190" y="45" width="35" height="28" rx="4" fill="rgba(167,139,250,0.2)" stroke="#a78bfa" stroke-width="1"/>
+    <text x="207" y="64" text-anchor="middle" fill="#e2e8f0" font-size="11" font-family="monospace">b3</text>
+
+    <!-- Arrow -->
+    <text x="330" y="45" fill="#94a3b8" font-size="24" font-family="sans-serif">&#8595;</text>
+
+    <!-- Packed stream -->
+    <text x="10" y="105" fill="#34d399" font-size="13" font-family="sans-serif">Packed:</text>
+    <rect x="80" y="90" width="35" height="28" rx="4" fill="rgba(96,165,250,0.2)" stroke="#60a5fa" stroke-width="1"/>
+    <text x="97" y="109" text-anchor="middle" fill="#e2e8f0" font-size="11" font-family="monospace">a1</text>
+    <rect x="120" y="90" width="35" height="28" rx="4" fill="rgba(96,165,250,0.2)" stroke="#60a5fa" stroke-width="1"/>
+    <text x="137" y="109" text-anchor="middle" fill="#e2e8f0" font-size="11" font-family="monospace">a2</text>
+    <rect x="160" y="90" width="35" height="28" rx="4" fill="rgba(96,165,250,0.2)" stroke="#60a5fa" stroke-width="1"/>
+    <text x="177" y="109" text-anchor="middle" fill="#e2e8f0" font-size="11" font-family="monospace">a3</text>
+    <rect x="200" y="90" width="35" height="28" rx="4" fill="rgba(96,165,250,0.2)" stroke="#60a5fa" stroke-width="1"/>
+    <text x="217" y="109" text-anchor="middle" fill="#e2e8f0" font-size="11" font-family="monospace">a4</text>
+    <rect x="240" y="90" width="35" height="28" rx="4" fill="rgba(96,165,250,0.2)" stroke="#60a5fa" stroke-width="1"/>
+    <text x="257" y="109" text-anchor="middle" fill="#e2e8f0" font-size="11" font-family="monospace">a5</text>
+    <rect x="280" y="90" width="35" height="28" rx="4" fill="rgba(252,211,77,0.2)" stroke="#ffcb6b" stroke-width="1"/>
+    <text x="297" y="109" text-anchor="middle" fill="#ffcb6b" font-size="11" font-family="monospace">SEP</text>
+    <rect x="320" y="90" width="35" height="28" rx="4" fill="rgba(167,139,250,0.2)" stroke="#a78bfa" stroke-width="1"/>
+    <text x="337" y="109" text-anchor="middle" fill="#e2e8f0" font-size="11" font-family="monospace">b1</text>
+    <rect x="360" y="90" width="35" height="28" rx="4" fill="rgba(167,139,250,0.2)" stroke="#a78bfa" stroke-width="1"/>
+    <text x="377" y="109" text-anchor="middle" fill="#e2e8f0" font-size="11" font-family="monospace">b2</text>
+    <rect x="400" y="90" width="35" height="28" rx="4" fill="rgba(167,139,250,0.2)" stroke="#a78bfa" stroke-width="1"/>
+    <text x="417" y="109" text-anchor="middle" fill="#e2e8f0" font-size="11" font-family="monospace">b3</text>
+    <text x="450" y="109" fill="#546e7a" font-size="11" font-family="monospace">...</text>
+
+    <!-- Blocks -->
+    <text x="10" y="155" fill="#e2e8f0" font-size="13" font-family="sans-serif">Block 0 (seq_len=4):</text>
+    <rect x="170" y="140" width="155" height="28" rx="4" fill="rgba(52,211,153,0.15)" stroke="#34d399" stroke-width="1.5"/>
+    <text x="247" y="159" text-anchor="middle" fill="#34d399" font-size="11" font-family="monospace">a1 a2 a3 a4</text>
+
+    <text x="10" y="195" fill="#e2e8f0" font-size="13" font-family="sans-serif">Block 1 (seq_len=4):</text>
+    <rect x="170" y="180" width="155" height="28" rx="4" fill="rgba(247,140,108,0.15)" stroke="#f78c6c" stroke-width="1.5"/>
+    <text x="247" y="199" text-anchor="middle" fill="#f78c6c" font-size="11" font-family="monospace">a5 SEP b1 b2</text>
+  </svg>
+</div>
+
+<h3>Document boundaries</h3>
+<p>A subtle problem: if document A ends at position 3 and document B starts at position 4 in the same block, the attention mechanism will attend across the boundary. The model sees tokens from document B when predicting the last token of document A.</p>
+
+<p>Solutions:</p>
+<ol>
+  <li><strong>Separator tokens</strong>: Insert a special token between documents. The model learns that after a separator, the context resets.</li>
+  <li><strong>Attention mask modification</strong>: Use a block-diagonal attention mask that prevents cross-document attention. This is more complex but more principled.</li>
+  <li><strong>Accept the leakage</strong>: In practice, for large-scale pretraining, the small amount of cross-document attention at boundaries has minimal impact.</li>
+</ol>
+<p>Our implementation uses approach 1 (separator tokens) for simplicity.</p>
+
+<h2 id="dataloader">DataLoader Configuration</h2>
+<p>The <code>create_pretrain_dataloader</code> function wraps everything together:</p>
+
+<pre><code>DataLoader(
+    dataset,
+    batch_size=batch_size,
+    shuffle=<span class="num">True</span>,         <span class="cm"># randomize sample order each epoch</span>
+    collate_fn=...,       <span class="cm"># dynamic padding (or None for packing)</span>
+    drop_last=<span class="num">True</span>,       <span class="cm"># drop the last incomplete batch</span>
+)</code></pre>
+
+<h3><code>shuffle=True</code></h3>
+<p>Pretraining data is a flat stream of tokens. Shuffling prevents the model from learning spurious patterns in the order of documents. Each epoch sees the same data in a different order.</p>
+
+<h3><code>drop_last=True</code></h3>
+<p>The last batch may be smaller than <code>batch_size</code>. Dropping it avoids:</p>
+<ul>
+  <li>Wasting compute on a small batch that cannot saturate the GPU.</li>
+  <li>Potential shape issues with batch normalization (not used in transformers, but a good habit).</li>
+</ul>
+
+<h3><code>num_workers</code></h3>
+<p>For production training, set <code>num_workers > 0</code> to load data in parallel processes. This keeps the GPU fed while the CPU prepares the next batch. For learning and debugging, <code>num_workers=0</code> (the default) is fine.</p>
+
+<h2 id="walkthrough">Code Walkthrough</h2>
+
+<h3>Step 1: PretrainDataset</h3>
+<pre><code>dataset = PretrainDataset(token_ids, seq_len=<span class="num">512</span>)</code></pre>
+<p>Takes a flat list of token IDs (e.g., the entire training corpus tokenized) and splits it into chunks of 512 tokens. Each <code>__getitem__</code> call returns a dict with <code>input_ids</code> (512 tokens) and <code>labels</code> (the same 512 tokens shifted by one).</p>
+
+<h3>Step 2: dynamic_pad_collate</h3>
+<pre><code>collate_fn = <span class="kw">lambda</span> b: dynamic_pad_collate(b, pad_id=<span class="num">0</span>)</code></pre>
+<p>When the DataLoader collects a batch of samples, this function pads them to the same length. It also creates the attention mask and sets label padding to -100.</p>
+
+<h3>Step 3: PackedDataset</h3>
+<pre><code>dataset = PackedDataset([doc1_tokens, doc2_tokens, ...], seq_len=<span class="num">512</span>)</code></pre>
+<p>Takes multiple documents (each a list of token IDs), concatenates them with separators, and splits into blocks. No padding needed -- every block is exactly <code>seq_len</code> tokens.</p>
+
+<h3>Step 4: create_pretrain_dataloader</h3>
+<pre><code>loader = create_pretrain_dataloader(
+    token_ids,
+    seq_len=<span class="num">512</span>,
+    batch_size=<span class="num">8</span>,
+    use_packing=<span class="num">False</span>,
+)</code></pre>
+<p>One function to rule them all. Creates either a <code>PretrainDataset</code> or <code>PackedDataset</code> depending on <code>use_packing</code>, wraps it in a DataLoader with the appropriate collate function, and returns a ready-to-iterate training loader.</p>
+
+<h2 id="exercises">Exercises</h2>
+<p>Open <code>exercise.py</code> and implement:</p>
+<ol>
+  <li><strong><code>PretrainDataset.__getitem__</code></strong>: Extract a chunk and create the input/label shift.</li>
+  <li><strong><code>dynamic_pad_collate</code></strong>: Pad a batch to the max length, create attention masks, set label padding to -100.</li>
+  <li><strong><code>PackedDataset.__getitem__</code></strong>: Same as PretrainDataset but using the packed block size.</li>
+</ol>
+<p>Run the exercise tests with:</p>
+<pre><code>pytest test_exercise.py -v</code></pre>
+<p>Remove the <code>@pytest.mark.skip</code> decorators as you implement each method.</p>
+
+<h2 id="tests">Running Tests</h2>
+<pre><code><span class="cm"># Test the main implementation</span>
+pytest tests.py -v
+
+<span class="cm"># Test the exercise version</span>
+pytest test_exercise.py -v</code></pre>
+
+<h2 id="summary">Summary</h2>
+<table class="summary-table">
+  <tr><th>Concept</th><th>What it solves</th></tr>
+  <tr><td><code>PretrainDataset</code></td><td>Splits flat tokens into fixed-length input/label pairs</td></tr>
+  <tr><td><code>dynamic_pad_collate</code></td><td>Pads batches to the max length in the batch, not a global max</td></tr>
+  <tr><td><code>PackedDataset</code></td><td>Eliminates padding entirely by concatenating documents</td></tr>
+  <tr><td><code>attention_mask</code></td><td>Tells the model which positions are real tokens vs. padding</td></tr>
+  <tr><td><code>labels = -100</code></td><td>Tells the loss function to ignore padded positions</td></tr>
+  <tr><td><code>drop_last=True</code></td><td>Avoids wasting compute on a small final batch</td></tr>
+</table>
+
+<h2 id="next">Next Steps</h2>
+<ul>
+  <li><strong>Chapter 02 (Data Engineering)</strong>: Where the raw text comes from, cleaning, deduplication, and quality filtering.</li>
+  <li><strong>Chapter 03 (Training Loop)</strong>: How to actually train a model using this data pipeline.</li>
+</ul>
+
+</main>
+</body>
+</html>

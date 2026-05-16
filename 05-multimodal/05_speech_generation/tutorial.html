@@ -1,0 +1,381 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Text-to-Speech (TTS) -- Module 05, Chapter 05</title>
+<style>
+  :root {
+    --sidebar-w: 260px; --bg: #f8f9fa; --sidebar-bg: #1e1e2e; --sidebar-text: #cdd6f4; --sidebar-active: #89b4fa; --accent: #89b4fa;
+    --code-bg: #282a36; --code-text: #f8f8f2; --card-bg: #ffffff; --text: #333; --heading: #1e1e2e; --border: #e0e0e0;
+    --kw: #ff79c6; --fn: #50fa7b; --str: #f1fa8c; --cm: #6272a4; --num: #bd93f9; --op: #ff79c6; --ty: #8be9fd;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; background: var(--bg); color: var(--text); line-height: 1.7; }
+  a { color: var(--accent); text-decoration: none; } a:hover { text-decoration: underline; }
+  nav.sidebar { position: fixed; top: 0; left: 0; width: var(--sidebar-w); height: 100vh; background: var(--sidebar-bg); color: var(--sidebar-text); overflow-y: auto; padding: 24px 16px; z-index: 100; font-size: 14px; line-height: 1.6; }
+  nav.sidebar .logo { font-size: 18px; font-weight: 700; color: var(--accent); margin-bottom: 8px; }
+  nav.sidebar .subtitle { font-size: 12px; color: #a6adc8; margin-bottom: 24px; border-bottom: 1px solid #313244; padding-bottom: 12px; }
+  nav.sidebar ul { list-style: none; } nav.sidebar li { margin: 2px 0; }
+  nav.sidebar li a { display: block; padding: 6px 10px; border-radius: 6px; color: var(--sidebar-text); font-size: 13px; transition: background 0.15s; }
+  nav.sidebar li a:hover { background: #313244; text-decoration: none; }
+  nav.sidebar li a.active { background: rgba(137,180,250,0.15); color: var(--sidebar-active); font-weight: 600; }
+  main { margin-left: var(--sidebar-w); max-width: 860px; padding: 40px 48px 80px; }
+  h1 { font-size: 2rem; color: var(--heading); margin-bottom: 8px; }
+  .chapter-badge { display: inline-block; background: var(--accent); color: #1e1e2e; font-size: 12px; font-weight: 700; padding: 2px 10px; border-radius: 12px; margin-bottom: 16px; }
+  h2 { font-size: 1.45rem; color: var(--heading); margin: 40px 0 16px; padding-bottom: 8px; border-bottom: 2px solid var(--accent); }
+  h3 { font-size: 1.15rem; color: var(--heading); margin: 28px 0 12px; }
+  p { margin-bottom: 14px; } ul, ol { margin: 0 0 16px 24px; } li { margin-bottom: 4px; }
+  hr { border: none; border-top: 1px solid var(--border); margin: 32px 0; }
+  code { font-family: "SF Mono", "Fira Code", "Cascadia Code", monospace; font-size: 0.88em; }
+  p code, li code, td code { background: #eef; padding: 1px 5px; border-radius: 4px; color: #d63384; }
+  pre { background: var(--code-bg); color: var(--code-text); padding: 18px 20px; border-radius: 8px; overflow-x: auto; margin-bottom: 18px; line-height: 1.55; font-size: 13.5px; }
+  pre code { background: none; color: inherit; padding: 0; }
+  .kw { color: var(--kw); } .fn { color: var(--fn); } .str { color: var(--str); } .cm { color: var(--cm); font-style: italic; } .num { color: var(--num); } .op { color: var(--op); } .ty { color: var(--ty); }
+  table { width: 100%; border-collapse: collapse; margin-bottom: 18px; font-size: 14px; }
+  th { background: var(--heading); color: #fff; text-align: left; padding: 10px 14px; font-weight: 600; }
+  td { padding: 9px 14px; border-bottom: 1px solid var(--border); } tr:nth-child(even) { background: #f4f4f8; }
+  .diagram { text-align: center; margin: 24px 0; } .diagram svg { max-width: 100%; height: auto; }
+  .tip { background: #eef6ff; border-left: 4px solid var(--accent); padding: 14px 18px; border-radius: 6px; margin-bottom: 18px; font-size: 14px; }
+  @media (max-width: 900px) { nav.sidebar { display: none; } main { margin-left: 0; padding: 24px 18px 60px; } }
+</style>
+</head>
+<body>
+
+<nav class="sidebar">
+  <div class="logo">LLM From Scratch</div>
+  <div class="subtitle">Module 05 -- Multimodal</div>
+  <ul>
+    <li><a class="active" href="#overview">The Big Picture</a></li>
+    <li><a href="#config">TTSConfig</a></li>
+    <li><a href="#architecture">Architecture Details</a></li>
+    <li><a href="#forward">Forward Pass</a></li>
+    <li><a href="#prenorm">Pre-Norm Transformer</a></li>
+    <li><a href="#howto">How to Run</a></li>
+    <li><a href="#exercises">Exercises</a></li>
+    <li><a href="#takeaways">Key Takeaways</a></li>
+    <li><a href="#reading">Further Reading</a></li>
+  </ul>
+</nav>
+
+<main>
+
+<h1>Text-to-Speech (TTS) Generation</h1>
+<span class="chapter-badge">Module 05 -- Chapter 05</span>
+
+<p>Text-to-Speech (TTS) converts written text into spoken audio. This module implements a simplified TTS pipeline inspired by architectures like Tacotron and WaveNet. The model encodes text tokens with a Transformer encoder, predicts mel frame durations, generates a mel spectrogram, and converts it to a waveform using a WaveNet-style vocoder with dilated convolutions.</p>
+
+<h2 id="prerequisites">Prerequisites</h2>
+<ul>
+  <li>Basic understanding of Transformers and self-attention (Module 01, Chapters 03-04)</li>
+  <li>PyTorch basics: <code>nn.Module</code>, <code>nn.Linear</code>, <code>nn.Embedding</code>, <code>nn.Conv1d</code>, <code>dataclasses</code></li>
+  <li>Familiarity with audio concepts (sampling rate, mel spectrograms)</li>
+</ul>
+
+<h2>Files</h2>
+<table>
+  <tr><th>File</th><th>Purpose</th></tr>
+  <tr><td><code>speech_generation.py</code></td><td>Core TTS implementation</td></tr>
+  <tr><td><code>exercise.py</code></td><td>Fill-in-the-blank exercises</td></tr>
+  <tr><td><code>solution.py</code></td><td>Reference solutions</td></tr>
+  <tr><td><code>tests.py</code></td><td>pytest tests for correctness</td></tr>
+</table>
+
+<hr>
+
+<h2 id="overview">The Big Picture</h2>
+<p>A TTS model converts text to audio through several stages:</p>
+
+<div class="diagram">
+<svg viewBox="0 0 560 560" width="520" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <marker id="a5" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto"><path d="M0,0 L8,3 L0,6 Z" fill="#89b4fa"/></marker>
+  </defs>
+  <!-- Text input -->
+  <rect x="100" y="10" width="360" height="38" rx="8" fill="#eef6ff" stroke="#89b4fa" stroke-width="1.5"/>
+  <text x="280" y="34" text-anchor="middle" font-size="13" font-weight="600" fill="#1e1e2e">Input: text_ids (B, seq_len)</text>
+  <line x1="280" y1="48" x2="280" y2="68" stroke="#89b4fa" stroke-width="1.5" marker-end="url(#a5)"/>
+
+  <!-- Text Encoder -->
+  <rect x="100" y="71" width="360" height="55" rx="8" fill="#f0fff4" stroke="#50fa7b" stroke-width="1.5"/>
+  <text x="280" y="91" text-anchor="middle" font-size="13" font-weight="600" fill="#1e1e2e">TextEncoder</text>
+  <text x="280" y="111" text-anchor="middle" font-size="11" fill="#666">token embedding + positional encoding + N x encoder blocks</text>
+  <line x1="280" y1="126" x2="280" y2="146" stroke="#89b4fa" stroke-width="1.5" marker-end="url(#a5)"/>
+
+  <!-- Duration Predictor -->
+  <rect x="100" y="149" width="360" height="38" rx="8" fill="#fff8e1" stroke="#f9a825" stroke-width="1.5"/>
+  <text x="280" y="173" text-anchor="middle" font-size="13" font-weight="600" fill="#1e1e2e">DurationPredictor -- linear projection -> frame count per token</text>
+  <line x1="280" y1="187" x2="280" y2="207" stroke="#89b4fa" stroke-width="1.5" marker-end="url(#a5)"/>
+
+  <!-- Expand / Interpolate -->
+  <rect x="100" y="210" width="360" height="38" rx="8" fill="#fff3e0" stroke="#ff9800" stroke-width="1.5"/>
+  <text x="280" y="234" text-anchor="middle" font-size="13" font-weight="600" fill="#1e1e2e">Expand / Interpolate -- repeat encoder output to match mel frames</text>
+  <line x1="280" y1="248" x2="280" y2="268" stroke="#89b4fa" stroke-width="1.5" marker-end="url(#a5)"/>
+
+  <!-- Mel Projection -->
+  <rect x="100" y="271" width="360" height="38" rx="8" fill="#fce4ec" stroke="#e91e63" stroke-width="1.5"/>
+  <text x="280" y="295" text-anchor="middle" font-size="13" font-weight="600" fill="#1e1e2e">Linear Projection -- d_model -> n_mels (predicted mel spectrogram)</text>
+  <line x1="280" y1="309" x2="280" y2="329" stroke="#89b4fa" stroke-width="1.5" marker-end="url(#a5)"/>
+
+  <!-- Vocoder -->
+  <rect x="100" y="332" width="360" height="75" rx="8" fill="#f3e5f5" stroke="#9c27b0" stroke-width="1.5"/>
+  <text x="280" y="352" text-anchor="middle" font-size="13" font-weight="600" fill="#1e1e2e">Vocoder (WaveNet-style)</text>
+  <text x="280" y="372" text-anchor="middle" font-size="11" fill="#666">dilated convolutions -> gated activation -> skip connections</text>
+  <text x="280" y="392" text-anchor="middle" font-size="11" fill="#666">upsample mel to waveform samples</text>
+  <line x1="280" y1="407" x2="280" y2="427" stroke="#89b4fa" stroke-width="1.5" marker-end="url(#a5)"/>
+
+  <!-- Output -->
+  <rect x="100" y="430" width="360" height="38" rx="8" fill="#eef6ff" stroke="#89b4fa" stroke-width="1.5"/>
+  <text x="280" y="454" text-anchor="middle" font-size="13" font-weight="600" fill="#1e1e2e">Output: waveform (B, num_samples)</text>
+</svg>
+</div>
+
+<h3>Key Insight: Duration-Based Expansion</h3>
+<p>A key challenge in TTS is that text and audio have very different lengths. A single phoneme might correspond to many audio frames. The duration predictor learns how many mel frames each text token should produce. During training, we interpolate the encoder output to match the target mel length. During inference, we use the predicted durations.</p>
+
+<hr>
+
+<h2 id="config">TTSConfig: Model Hyperparameters</h2>
+
+<pre><code><span class="kw">@dataclass</span>
+<span class="kw">class</span> <span class="ty">TTSConfig</span>:
+    vocab_size: <span class="ty">int</span> = <span class="num">256</span>           <span class="cm"># text vocabulary size</span>
+    d_model: <span class="ty">int</span> = <span class="num">64</span>               <span class="cm"># model dimension</span>
+    num_heads: <span class="ty">int</span> = <span class="num">4</span>              <span class="cm"># attention heads in TextEncoder</span>
+    num_layers: <span class="ty">int</span> = <span class="num">2</span>             <span class="cm"># transformer encoder blocks</span>
+    dim_feedforward: <span class="ty">int</span> = <span class="num">256</span>      <span class="cm"># FFN hidden dimension</span>
+    max_text_positions: <span class="ty">int</span> = <span class="num">512</span>   <span class="cm"># max text sequence length</span>
+    n_mels: <span class="ty">int</span> = <span class="num">80</span>                <span class="cm"># mel spectrogram frequency bins</span>
+    vocoder_channels: <span class="ty">int</span> = <span class="num">64</span>      <span class="cm"># vocoder hidden channels</span>
+    vocoder_num_layers: <span class="ty">int</span> = <span class="num">4</span>     <span class="cm"># dilated conv layers in vocoder</span>
+    hop_length: <span class="ty">int</span> = <span class="num">256</span>           <span class="cm"># audio samples per mel frame</span>
+    dropout: <span class="ty">float</span> = <span class="num">0.0</span>            <span class="cm"># dropout probability</span></code></pre>
+<p>Our implementation uses small defaults (d_model=64) for fast testing.</p>
+
+<hr>
+
+<h2 id="architecture">Architecture Details</h2>
+
+<h3>TextEncoder</h3>
+<p>The text encoder converts token IDs into continuous hidden representations:</p>
+<ol>
+  <li><strong>Token Embedding</strong>: Maps token IDs to d_model-dimensional vectors.</li>
+  <li><strong>Positional Encoding</strong>: Learnable embeddings added to token embeddings.</li>
+  <li><strong>Transformer Blocks</strong>: Pre-Norm encoder blocks with bidirectional self-attention.</li>
+  <li><strong>Final LayerNorm</strong>: Normalization after all blocks.</li>
+</ol>
+
+<pre><code>text_ids (B, seq_len)
+    -&gt; Token embedding + positional encoding
+    -&gt; N x EncoderBlock (self-attention + FFN)
+    -&gt; LayerNorm
+    -&gt; hidden states (B, seq_len, d_model)</code></pre>
+
+<h3>DurationPredictor</h3>
+<p>A simple linear layer that predicts how many mel frames each text token should produce:</p>
+<pre><code>durations = <span class="fn">F.relu</span>(self.<span class="fn">proj</span>(encoder_output).<span class="fn">squeeze</span>(<span class="num">-1</span>))</code></pre>
+<p>The ReLU ensures non-negative durations.</p>
+
+<h3>Vocoder</h3>
+<p>A simplified WaveNet-style vocoder that converts mel spectrograms to waveforms:</p>
+<ol>
+  <li><strong>Upsampling</strong>: Repeat each mel frame <code>hop_length</code> times to reach sample-level resolution.</li>
+  <li><strong>Input Projection</strong>: Map n_mels to vocoder_channels.</li>
+  <li><strong>Dilated Convolutions</strong>: Stack of layers with exponentially increasing dilation (1, 2, 4, 8, ...).</li>
+  <li><strong>Gated Activation</strong>: tanh(branch) * sigmoid(branch) for expressive nonlinearity.</li>
+  <li><strong>Skip Connections</strong>: Sum outputs from all layers before final projection.</li>
+  <li><strong>Output Projection</strong>: Map to a single waveform sample value.</li>
+</ol>
+
+<pre><code>mel (B, n_mels, num_frames)
+    -&gt; Upsample (repeat_interleave)
+    -&gt; Input projection (n_mels -&gt; channels)
+    -&gt; N x DilatedConvLayer
+    -&gt; Sum skip connections
+    -&gt; Output projection (channels -&gt; 1)
+    -&gt; waveform (B, num_samples)</code></pre>
+
+<h3>Dilated Convolutions</h3>
+<p>Dilated convolutions allow the vocoder to have a large receptive field without many layers:</p>
+
+<div class="diagram">
+<svg viewBox="0 0 560 160" width="520" xmlns="http://www.w3.org/2000/svg">
+  <!-- Input sequence -->
+  <text x="280" y="15" text-anchor="middle" font-size="12" font-weight="600" fill="#333">Input sequence (causal: left-padded)</text>
+  <g>
+    <rect x="30" y="25" width="500" height="20" rx="3" fill="#e3f2fd" stroke="#1565c0" stroke-width="1"/>
+    <!-- Ticks -->
+    <g stroke="#1565c0" stroke-width="0.5" opacity="0.4">
+      <line x1="70" y1="25" x2="70" y2="45"/><line x1="110" y1="25" x2="110" y2="45"/>
+      <line x1="150" y1="25" x2="150" y2="45"/><line x1="190" y1="25" x2="190" y2="45"/>
+      <line x1="230" y1="25" x2="230" y2="45"/><line x1="270" y1="25" x2="270" y2="45"/>
+      <line x1="310" y1="25" x2="310" y2="45"/><line x1="350" y1="25" x2="350" y2="45"/>
+      <line x1="390" y1="25" x2="390" y2="45"/><line x1="430" y1="25" x2="430" y2="45"/>
+      <line x1="470" y1="25" x2="470" y2="45"/><line x1="510" y1="25" x2="510" y2="45"/>
+    </g>
+  </g>
+
+  <!-- Layer 0: dilation=1, kernel=3 -->
+  <g>
+    <text x="15" y="72" font-size="10" fill="#666" text-anchor="end">d=1</text>
+    <rect x="390" y="55" width="140" height="22" rx="3" fill="rgba(233,30,99,0.2)" stroke="#e91e63" stroke-width="1.5"/>
+    <text x="460" y="71" text-anchor="middle" font-size="10" fill="#e91e63" font-weight="600">kernel=3, RF=3</text>
+  </g>
+
+  <!-- Layer 1: dilation=2, kernel=3 -->
+  <g>
+    <text x="15" y="100" font-size="10" fill="#666" text-anchor="end">d=2</text>
+    <rect x="310" y="83" width="220" height="22" rx="3" fill="rgba(156,39,176,0.2)" stroke="#9c27b0" stroke-width="1.5"/>
+    <text x="420" y="99" text-anchor="middle" font-size="10" fill="#9c27b0" font-weight="600">kernel=3, RF=7</text>
+  </g>
+
+  <!-- Layer 2: dilation=4, kernel=3 -->
+  <g>
+    <text x="15" y="128" font-size="10" fill="#666" text-anchor="end">d=4</text>
+    <rect x="150" y="111" width="380" height="22" rx="3" fill="rgba(92,107,192,0.2)" stroke="#5c6bc0" stroke-width="1.5"/>
+    <text x="340" y="127" text-anchor="middle" font-size="10" fill="#5c6bc0" font-weight="600">kernel=3, RF=15</text>
+  </g>
+
+  <!-- Layer 3: dilation=8, kernel=3 -->
+  <g>
+    <text x="15" y="156" font-size="10" fill="#666" text-anchor="end">d=8</text>
+    <rect x="30" y="139" width="500" height="18" rx="3" fill="rgba(76,175,80,0.2)" stroke="#4caf50" stroke-width="1.5"/>
+    <text x="280" y="153" text-anchor="middle" font-size="10" fill="#4caf50" font-weight="600">kernel=3, RF=31 (full coverage)</text>
+  </g>
+</svg>
+</div>
+
+<table>
+  <tr><th>Layer</th><th>Dilation</th><th>Kernel</th><th>Receptive Field</th></tr>
+  <tr><td>0</td><td>1</td><td>3</td><td>3</td></tr>
+  <tr><td>1</td><td>2</td><td>3</td><td>7</td></tr>
+  <tr><td>2</td><td>4</td><td>3</td><td>15</td></tr>
+  <tr><td>3</td><td>8</td><td>3</td><td>31</td></tr>
+</table>
+<p>Each layer uses causal padding (extra padding on the left) and trims the output to maintain the correct length.</p>
+
+<h3>Gated Activation</h3>
+<p>WaveNet uses a gating mechanism inspired by LSTM:</p>
+<pre><code>gate = <span class="fn">conv</span>(x)
+tanh_out, sigmoid_out = gate.<span class="fn">chunk</span>(<span class="num">2</span>, dim=<span class="num">1</span>)
+gated = torch.<span class="fn">tanh</span>(tanh_out) * torch.<span class="fn">sigmoid</span>(sigmoid_out)</code></pre>
+<p>This allows the network to selectively pass or block information at each layer.</p>
+
+<hr>
+
+<h2 id="forward">Forward Pass Walkthrough</h2>
+
+<h3>Training</h3>
+<pre><code><span class="kw">def</span> <span class="fn">forward</span>(self, text_ids, target_mel=<span class="num">None</span>):
+    <span class="cm"># 1. Encode text</span>
+    encoder_out = self.<span class="fn">encoder</span>(text_ids)  <span class="cm"># (B, seq_len, d_model)</span>
+
+    <span class="cm"># 2. Predict durations</span>
+    durations = self.<span class="fn">duration_predictor</span>(encoder_out)  <span class="cm"># (B, seq_len)</span>
+
+    <span class="cm"># 3. Determine output length</span>
+    <span class="kw">if</span> target_mel <span class="kw">is not</span> <span class="num">None</span>:
+        num_frames = target_mel.shape[<span class="num">2</span>]
+    <span class="kw">else</span>:
+        num_frames = <span class="fn">int</span>(durations.<span class="fn">sum</span>(dim=<span class="num">1</span>).<span class="fn">mean</span>().<span class="fn">item</span>())
+
+    <span class="cm"># 4. Expand encoder output to match mel frames</span>
+    expanded = F.<span class="fn">interpolate</span>(encoder_out.<span class="fn">transpose</span>(<span class="num">1</span>, <span class="num">2</span>), size=num_frames)
+    expanded = expanded.<span class="fn">transpose</span>(<span class="num">1</span>, <span class="num">2</span>)
+
+    <span class="cm"># 5. Project to mel spectrogram</span>
+    predicted_mel = self.<span class="fn">mel_proj</span>(expanded).<span class="fn">transpose</span>(<span class="num">1</span>, <span class="num">2</span>)
+    <span class="kw">return</span> predicted_mel</code></pre>
+
+<h3>Shape Trace</h3>
+<p>For a batch of 2 text sequences (seq_len=10) with d_model=32, n_mels=40:</p>
+<table>
+  <tr><th>Stage</th><th>Shape</th><th>Description</th></tr>
+  <tr><td>Input</td><td>(2, 10)</td><td>text token IDs</td></tr>
+  <tr><td>TextEncoder</td><td>(2, 10, 32)</td><td>hidden representations</td></tr>
+  <tr><td>DurationPredictor</td><td>(2, 10)</td><td>frame counts per token</td></tr>
+  <tr><td>Interpolate</td><td>(2, 30, 32)</td><td>expanded to 30 frames</td></tr>
+  <tr><td>Mel Projection</td><td>(2, 40, 30)</td><td>predicted mel spectrogram</td></tr>
+  <tr><td>Vocoder</td><td>(2, 3840)</td><td>waveform (30 * 128 samples)</td></tr>
+</table>
+
+<h3>Inference (Synthesize)</h3>
+<pre><code><span class="kw">@torch.no_grad</span>()
+<span class="kw">def</span> <span class="fn">synthesize</span>(self, text_ids):
+    self.<span class="fn">eval</span>()
+    predicted_mel = self.<span class="fn">forward</span>(text_ids)  <span class="cm"># no target_mel</span>
+    waveform = self.<span class="fn">vocoder</span>(predicted_mel)
+    <span class="kw">return</span> waveform</code></pre>
+<p>During inference, the predicted durations determine the output length.</p>
+
+<hr>
+
+<h2 id="prenorm">Pre-Norm Transformer Blocks</h2>
+<p>Our implementation uses <strong>Pre-Norm</strong> (LayerNorm before attention/FFN):</p>
+<pre><code>Pre-Norm:  x = x + Attention(LayerNorm(x))
+Post-Norm: x = LayerNorm(x + Attention(x))</code></pre>
+<p>Pre-Norm is more stable during training because the residual path is clean.</p>
+
+<hr>
+
+<h2 id="howto">How to Run</h2>
+
+<h3>Run Tests</h3>
+<pre><code><span class="cm">cd /path/to/llm-from-scratch</span>
+pytest 05-multimodal/05_speech_generation/tests.py -v</code></pre>
+
+<h3>Run Exercises</h3>
+<p>Open <code>exercise.py</code> and fill in the <code>TODO</code> sections. Then verify:</p>
+<pre><code>pytest 05-multimodal/05_speech_generation/tests.py -v</code></pre>
+
+<hr>
+
+<h2 id="exercises">Exercises</h2>
+<p>Open <code>exercise.py</code> to practice implementing the TTS model yourself.</p>
+
+<h3>Exercise Order</h3>
+<ol>
+  <li><strong>EncoderBlock</strong>: Create LayerNorm, MultiheadAttention, FFN, and implement Pre-Norm forward</li>
+  <li><strong>TextEncoder</strong>: Create embeddings, positional encoding, layer stack, and encoder forward</li>
+  <li><strong>DurationPredictor</strong>: Create the linear projection and implement the forward pass</li>
+  <li><strong>DilatedConvLayer</strong>: Create the dilated conv, residual/skip convolutions, and gated activation</li>
+  <li><strong>Vocoder</strong>: Create input/output projections, layer stack, and vocoder forward</li>
+  <li><strong>SimpleTTS</strong>: Combine all components into the end-to-end model</li>
+</ol>
+
+<h3>Tips</h3>
+<div class="tip">
+  <ul>
+    <li><code>nn.MultiheadAttention</code> with <code>batch_first=True</code> expects <code>(B, N, D)</code> input.</li>
+    <li><code>F.interpolate</code> with <code>mode="linear"</code> works for 3D tensors to resize the sequence dimension.</li>
+    <li><code>repeat_interleave</code> is a simple way to upsample by repeating each element.</li>
+    <li>Dilated convolutions use <code>padding=dilation</code> to maintain length, then trim the right side for causal behavior.</li>
+    <li>Gated activation: <code>torch.tanh(x) * torch.sigmoid(y)</code> allows selective information flow.</li>
+  </ul>
+</div>
+
+<hr>
+
+<h2 id="takeaways">Key Takeaways</h2>
+<ol>
+  <li><strong>TTS is a multi-stage pipeline.</strong> Text encoding, duration prediction, mel generation, and vocoding are separate components that work together.</li>
+  <li><strong>Duration prediction bridges text and audio lengths.</strong> A simple linear layer can learn how many audio frames each text token should produce.</li>
+  <li><strong>Dilated convolutions enable large receptive fields.</strong> By exponentially increasing the dilation factor, each layer can see further without adding many parameters.</li>
+  <li><strong>Gated activations are powerful.</strong> The tanh * sigmoid gating mechanism (from WaveNet/LSTM) allows the network to control information flow.</li>
+  <li><strong>Skip connections aggregate multi-scale features.</strong> Summing skip connections from all layers combines local and global information for the final output.</li>
+</ol>
+
+<hr>
+
+<h2 id="reading">Further Reading</h2>
+<ul>
+  <li><a href="https://arxiv.org/abs/1609.03499">WaveNet (van den Oord et al., 2016)</a> -- A Generative Model for Raw Audio</li>
+  <li><a href="https://arxiv.org/abs/1703.10135">Tacotron (Wang et al., 2017)</a> -- Towards End-to-End Speech Synthesis</li>
+  <li><a href="https://arxiv.org/abs/1712.05884">Tacotron 2 (Shen et al., 2018)</a> -- Natural TTS Synthesis by Conditioning WaveNet on Mel Spectrogram</li>
+  <li><a href="https://arxiv.org/abs/1706.03762">Attention Is All You Need (Vaswani et al., 2017)</a> -- Original Transformer paper</li>
+  <li><a href="https://arxiv.org/abs/2006.04558">FastSpeech 2 (Ren et al., 2020)</a> -- Fast and High-Quality End-to-End Text to Speech</li>
+</ul>
+
+</main>
+</body>
+</html>

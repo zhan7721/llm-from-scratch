@@ -42,13 +42,18 @@ class NTKAwareScaling:
     components while extending context. From Reddit/bloc97.
     """
 
-    def __init__(self, original_max_seq_len: int, target_max_seq_len: int, base: float = 10000.0):
+    def __init__(self, original_max_seq_len: int, target_max_seq_len: int, base: float = 10000.0, d_model: int = 64):
         self.original_max_seq_len = original_max_seq_len
         self.target_max_seq_len = target_max_seq_len
         self.scale_factor = target_max_seq_len / original_max_seq_len
+        self.base = base
+        self.d_model = d_model
 
-        # NTK-aware: scale the base instead of the positions
-        self.scaled_base = base * (self.scale_factor ** (2 * math.pi / (2 * math.pi)))
+        # NTK-aware: scale the base by scale_factor^(d/(d-2))
+        # This ensures high-frequency components are preserved
+        # while low-frequency components are extended.
+        exponent = d_model / (d_model - 2)
+        self.scaled_base = base * (self.scale_factor ** exponent)
 
     def get_scaled_inv_freq(self, d_model: int, device: torch.device) -> torch.Tensor:
         """Get scaled inverse frequency for RoPE."""
@@ -210,7 +215,13 @@ class LongContextTrainer:
         if scaling_method == "pi":
             self.scaler = PositionInterpolation(original_max_seq_len, target_max_seq_len)
         else:
-            self.scaler = NTKAwareScaling(original_max_seq_len, target_max_seq_len)
+            # Try to infer d_model from the model's embedding layer
+            d_model = 64  # default
+            for module in model.modules():
+                if isinstance(module, nn.Embedding):
+                    d_model = module.embedding_dim
+                    break
+            self.scaler = NTKAwareScaling(original_max_seq_len, target_max_seq_len, d_model=d_model)
 
     def train_step(self, batch: Dict[str, torch.Tensor], step: int) -> Dict[str, float]:
         """Execute one training step.

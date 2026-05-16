@@ -1,0 +1,339 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Visual Language Model (VLM) -- Module 05, Chapter 02</title>
+<style>
+  :root {
+    --sidebar-w: 260px;
+    --bg: #f8f9fa;
+    --sidebar-bg: #1e1e2e;
+    --sidebar-text: #cdd6f4;
+    --sidebar-active: #89b4fa;
+    --accent: #89b4fa;
+    --code-bg: #282a36;
+    --code-text: #f8f8f2;
+    --card-bg: #ffffff;
+    --text: #333;
+    --heading: #1e1e2e;
+    --border: #e0e0e0;
+    --kw: #ff79c6; --fn: #50fa7b; --str: #f1fa8c; --cm: #6272a4; --num: #bd93f9; --op: #ff79c6; --ty: #8be9fd;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; background: var(--bg); color: var(--text); line-height: 1.7; }
+  a { color: var(--accent); text-decoration: none; } a:hover { text-decoration: underline; }
+  nav.sidebar { position: fixed; top: 0; left: 0; width: var(--sidebar-w); height: 100vh; background: var(--sidebar-bg); color: var(--sidebar-text); overflow-y: auto; padding: 24px 16px; z-index: 100; font-size: 14px; line-height: 1.6; }
+  nav.sidebar .logo { font-size: 18px; font-weight: 700; color: var(--accent); margin-bottom: 8px; }
+  nav.sidebar .subtitle { font-size: 12px; color: #a6adc8; margin-bottom: 24px; border-bottom: 1px solid #313244; padding-bottom: 12px; }
+  nav.sidebar ul { list-style: none; } nav.sidebar li { margin: 2px 0; }
+  nav.sidebar li a { display: block; padding: 6px 10px; border-radius: 6px; color: var(--sidebar-text); font-size: 13px; transition: background 0.15s; }
+  nav.sidebar li a:hover { background: #313244; text-decoration: none; }
+  nav.sidebar li a.active { background: rgba(137,180,250,0.15); color: var(--sidebar-active); font-weight: 600; }
+  main { margin-left: var(--sidebar-w); max-width: 860px; padding: 40px 48px 80px; }
+  h1 { font-size: 2rem; color: var(--heading); margin-bottom: 8px; }
+  .chapter-badge { display: inline-block; background: var(--accent); color: #1e1e2e; font-size: 12px; font-weight: 700; padding: 2px 10px; border-radius: 12px; margin-bottom: 16px; }
+  h2 { font-size: 1.45rem; color: var(--heading); margin: 40px 0 16px; padding-bottom: 8px; border-bottom: 2px solid var(--accent); }
+  h3 { font-size: 1.15rem; color: var(--heading); margin: 28px 0 12px; }
+  p { margin-bottom: 14px; } ul, ol { margin: 0 0 16px 24px; } li { margin-bottom: 4px; }
+  hr { border: none; border-top: 1px solid var(--border); margin: 32px 0; }
+  code { font-family: "SF Mono", "Fira Code", "Cascadia Code", monospace; font-size: 0.88em; }
+  p code, li code, td code { background: #eef; padding: 1px 5px; border-radius: 4px; color: #d63384; }
+  pre { background: var(--code-bg); color: var(--code-text); padding: 18px 20px; border-radius: 8px; overflow-x: auto; margin-bottom: 18px; line-height: 1.55; font-size: 13.5px; }
+  pre code { background: none; color: inherit; padding: 0; }
+  .kw { color: var(--kw); } .fn { color: var(--fn); } .str { color: var(--str); } .cm { color: var(--cm); font-style: italic; } .num { color: var(--num); } .op { color: var(--op); } .ty { color: var(--ty); }
+  table { width: 100%; border-collapse: collapse; margin-bottom: 18px; font-size: 14px; }
+  th { background: var(--heading); color: #fff; text-align: left; padding: 10px 14px; font-weight: 600; }
+  td { padding: 9px 14px; border-bottom: 1px solid var(--border); }
+  tr:nth-child(even) { background: #f4f4f8; }
+  .diagram { text-align: center; margin: 24px 0; } .diagram svg { max-width: 100%; height: auto; }
+  .tip { background: #eef6ff; border-left: 4px solid var(--accent); padding: 14px 18px; border-radius: 6px; margin-bottom: 18px; font-size: 14px; }
+  @media (max-width: 900px) { nav.sidebar { display: none; } main { margin-left: 0; padding: 24px 18px 60px; } }
+</style>
+</head>
+<body>
+
+<nav class="sidebar">
+  <div class="logo">LLM From Scratch</div>
+  <div class="subtitle">Module 05 -- Multimodal</div>
+  <ul>
+    <li><a class="active" href="#overview">The Big Picture</a></li>
+    <li><a href="#config">VLMConfig</a></li>
+    <li><a href="#components">Architecture Components</a></li>
+    <li><a href="#forward">Forward Pass</a></li>
+    <li><a href="#design">Key Design Decisions</a></li>
+    <li><a href="#params">Parameter Counting</a></li>
+    <li><a href="#howto">How to Run</a></li>
+    <li><a href="#exercises">Exercises</a></li>
+    <li><a href="#takeaways">Key Takeaways</a></li>
+    <li><a href="#reading">Further Reading</a></li>
+  </ul>
+</nav>
+
+<main>
+
+<h1>Visual Language Model (VLM)</h1>
+<span class="chapter-badge">Module 05 -- Chapter 02</span>
+
+<p>We have built a Vision Transformer (ViT) in Chapter 01. Now we combine it with a language model to create a Visual Language Model that can understand both images and text. This chapter implements the core VLM architecture used in models like LLaVA and Flamingo.</p>
+
+<h2 id="prerequisites">Prerequisites</h2>
+<ul>
+  <li>Vision Transformer (ViT) from Chapter 01</li>
+  <li>Transformer architecture from Module 01</li>
+  <li>PyTorch basics: <code>nn.Module</code>, <code>nn.Linear</code>, <code>dataclasses</code></li>
+</ul>
+
+<h2>Files</h2>
+<table>
+  <tr><th>File</th><th>Purpose</th></tr>
+  <tr><td><code>vlm.py</code></td><td>Core VLM implementation</td></tr>
+  <tr><td><code>exercise.py</code></td><td>Fill-in-the-blank exercises</td></tr>
+  <tr><td><code>solution.py</code></td><td>Reference solutions</td></tr>
+  <tr><td><code>tests.py</code></td><td>pytest tests for correctness</td></tr>
+</table>
+
+<hr>
+
+<h2 id="overview">The Big Picture</h2>
+<p>A Visual Language Model combines vision and language understanding. The key insight is to project vision features into the same embedding space as text tokens, then process them together with a language model.</p>
+
+<div class="diagram">
+<svg viewBox="0 0 560 620" width="520" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <marker id="a2" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto"><path d="M0,0 L8,3 L0,6 Z" fill="#89b4fa"/></marker>
+  </defs>
+  <!-- Image input -->
+  <rect x="100" y="10" width="360" height="38" rx="8" fill="#eef6ff" stroke="#89b4fa" stroke-width="1.5"/>
+  <text x="280" y="34" text-anchor="middle" font-size="13" font-weight="600" fill="#1e1e2e">Image (B, C, H, W)</text>
+  <line x1="280" y1="48" x2="280" y2="65" stroke="#89b4fa" stroke-width="1.5" marker-end="url(#a2)"/>
+
+  <!-- Vision Encoder -->
+  <rect x="100" y="68" width="360" height="38" rx="8" fill="#f0fff4" stroke="#50fa7b" stroke-width="1.5"/>
+  <text x="280" y="92" text-anchor="middle" font-size="13" font-weight="600" fill="#1e1e2e">Vision Encoder (ViT)</text>
+  <line x1="280" y1="106" x2="280" y2="123" stroke="#89b4fa" stroke-width="1.5" marker-end="url(#a2)"/>
+
+  <!-- Vision Features -->
+  <rect x="100" y="126" width="360" height="38" rx="8" fill="#fff8e1" stroke="#f9a825" stroke-width="1.5"/>
+  <text x="280" y="150" text-anchor="middle" font-size="13" font-weight="600" fill="#1e1e2e">Vision Features (B, num_patches, vision_dim)</text>
+  <line x1="280" y1="164" x2="280" y2="181" stroke="#89b4fa" stroke-width="1.5" marker-end="url(#a2)"/>
+
+  <!-- Projector -->
+  <rect x="100" y="184" width="360" height="38" rx="8" fill="#fce4ec" stroke="#e91e63" stroke-width="1.5"/>
+  <text x="280" y="208" text-anchor="middle" font-size="13" font-weight="600" fill="#1e1e2e">Vision Projector (MLP: Linear + GELU + Linear)</text>
+  <line x1="280" y1="222" x2="280" y2="239" stroke="#89b4fa" stroke-width="1.5" marker-end="url(#a2)"/>
+
+  <!-- Vision Embeddings -->
+  <rect x="100" y="242" width="360" height="38" rx="8" fill="#e8eaf6" stroke="#5c6bc0" stroke-width="1.5"/>
+  <text x="280" y="266" text-anchor="middle" font-size="13" font-weight="600" fill="#1e1e2e">Vision Embeddings (B, num_patches, lm_dim)</text>
+
+  <!-- Concatenation -->
+  <line x1="280" y1="280" x2="280" y2="310" stroke="#89b4fa" stroke-width="1.5" marker-end="url(#a2)"/>
+  <text x="295" y="300" font-size="11" fill="#666">concat</text>
+
+  <rect x="50" y="313" width="460" height="48" rx="8" fill="#fff3e0" stroke="#ff9800" stroke-width="1.5"/>
+  <text x="280" y="332" text-anchor="middle" font-size="12" font-weight="600" fill="#1e1e2e">[vision_token_1 ... vision_token_N | text_token_1 ... text_token_L]</text>
+  <text x="280" y="350" text-anchor="middle" font-size="11" fill="#666">(B, num_vision + seq_len, lm_dim)</text>
+
+  <!-- Text input (side) -->
+  <line x1="510" y1="337" x2="530" y2="337" stroke="#9c27b0" stroke-width="1.5" marker-end="url(#a2)"/>
+  <text x="545" y="332" font-size="11" fill="#9c27b0">Text Embeddings</text>
+  <text x="545" y="347" font-size="10" fill="#666">(B, seq_len, lm_dim)</text>
+
+  <!-- LM -->
+  <line x1="280" y1="361" x2="280" y2="383" stroke="#89b4fa" stroke-width="1.5" marker-end="url(#a2)"/>
+
+  <rect x="100" y="386" width="360" height="38" rx="8" fill="#f3e5f5" stroke="#9c27b0" stroke-width="1.5"/>
+  <text x="280" y="410" text-anchor="middle" font-size="13" font-weight="600" fill="#1e1e2e">Language Model (Transformer, causal attention)</text>
+  <line x1="280" y1="424" x2="280" y2="446" stroke="#89b4fa" stroke-width="1.5" marker-end="url(#a2)"/>
+
+  <!-- Output -->
+  <rect x="100" y="449" width="360" height="38" rx="8" fill="#eef6ff" stroke="#89b4fa" stroke-width="1.5"/>
+  <text x="280" y="473" text-anchor="middle" font-size="13" font-weight="600" fill="#1e1e2e">Logits (B, num_vision + seq_len, vocab_size)</text>
+</svg>
+</div>
+
+<hr>
+
+<h2 id="config">VLMConfig: Model Hyperparameters</h2>
+
+<pre><code><span class="kw">@dataclass</span>
+<span class="kw">class</span> <span class="ty">VLMConfig</span>:
+    vision_dim: <span class="ty">int</span> = <span class="num">768</span>          <span class="cm"># vision encoder output dimension</span>
+    lm_dim: <span class="ty">int</span> = <span class="num">512</span>              <span class="cm"># language model embedding dimension</span>
+    lm_vocab_size: <span class="ty">int</span> = <span class="num">32000</span>     <span class="cm"># language model vocabulary size</span>
+    lm_n_heads: <span class="ty">int</span> = <span class="num">8</span>            <span class="cm"># language model attention heads</span>
+    lm_n_layers: <span class="ty">int</span> = <span class="num">6</span>           <span class="cm"># language model transformer layers</span>
+    lm_max_seq_len: <span class="ty">int</span> = <span class="num">1024</span>     <span class="cm"># max text sequence length</span>
+    vision_image_size: <span class="ty">int</span> = <span class="num">224</span>   <span class="cm"># input image size</span>
+    vision_patch_size: <span class="ty">int</span> = <span class="num">16</span>    <span class="cm"># vision encoder patch size</span>
+    vision_n_heads: <span class="ty">int</span> = <span class="num">12</span>       <span class="cm"># vision encoder attention heads</span>
+    vision_n_layers: <span class="ty">int</span> = <span class="num">12</span>      <span class="cm"># vision encoder transformer layers</span></code></pre>
+
+<hr>
+
+<h2 id="components">Architecture Components</h2>
+
+<h3>1. Vision Encoder (ViT)</h3>
+<p>The vision encoder extracts features from images using the Vision Transformer from Chapter 01. It converts an image into a sequence of patch embeddings:</p>
+<pre><code><span class="cm"># For a 224x224 image with 16x16 patches:</span>
+<span class="cm"># num_patches = (224/16)^2 = 196 patches</span>
+<span class="cm"># Plus 1 CLS token = 197 total vision tokens</span>
+<span class="cm"># Output: (B, 197, vision_dim)</span></code></pre>
+
+<h3>2. Vision Projector (MLP)</h3>
+<p>The projector maps vision features from <code>vision_dim</code> to <code>lm_dim</code> using a simple MLP:</p>
+<pre><code><span class="fn">Linear</span>(vision_dim, lm_dim) -&gt; <span class="fn">GELU</span> -&gt; <span class="fn">Linear</span>(lm_dim, lm_dim)</code></pre>
+<p>This is the standard approach used in LLaVA. The GELU activation provides non-linearity, and the two-layer MLP allows for more complex transformations than a single linear layer.</p>
+
+<h3>3. Language Model</h3>
+<p>The language model is a standard GPT-style transformer with:</p>
+<ul>
+  <li>Token embedding</li>
+  <li>Positional embedding (learned)</li>
+  <li>N transformer blocks with causal attention</li>
+  <li>Final layer norm</li>
+  <li>Language model head</li>
+</ul>
+
+<h3>4. Concatenation Strategy</h3>
+<p>Vision tokens are <strong>prepended</strong> to text tokens. This means the sequence looks like:</p>
+<pre><code>[vision_token_1, vision_token_2, ..., vision_token_N, text_token_1, text_token_2, ...]</code></pre>
+<p>This allows the language model to attend to vision tokens when generating text, enabling visual understanding.</p>
+
+<hr>
+
+<h2 id="forward">Forward Pass Walkthrough</h2>
+
+<pre><code><span class="kw">def</span> <span class="fn">forward</span>(self, images, input_ids):
+    <span class="cm"># 1. Extract vision features</span>
+    vision_features = self.<span class="fn">vision_encoder</span>(images)
+    <span class="cm"># (B, 3, 224, 224) -> (B, 197, vision_dim)</span>
+
+    <span class="cm"># 2. Project to LM embedding space</span>
+    vision_embeddings = self.<span class="fn">projector</span>(vision_features)
+    <span class="cm"># (B, 197, vision_dim) -> (B, 197, lm_dim)</span>
+
+    <span class="cm"># 3. Get text embeddings</span>
+    text_embeddings = self.<span class="fn">token_emb</span>(input_ids)
+    <span class="cm"># (B, seq_len) -> (B, seq_len, lm_dim)</span>
+
+    <span class="cm"># 4. Concatenate (vision first)</span>
+    combined = <span class="fn">torch.cat</span>([vision_embeddings, text_embeddings], dim=<span class="num">1</span>)
+    <span class="cm"># (B, 197 + seq_len, lm_dim)</span>
+
+    <span class="cm"># 5. Add positional embeddings</span>
+    positions = <span class="fn">torch.arange</span>(combined.shape[<span class="num">1</span>], device=combined.device)
+    combined = combined + self.<span class="fn">pos_emb</span>(positions)
+
+    <span class="cm"># 6. Process through language model</span>
+    h = combined
+    <span class="kw">for</span> layer <span class="kw">in</span> self.layers:
+        h = <span class="fn">layer</span>(h)
+
+    <span class="cm"># 7. Final norm and project to vocabulary</span>
+    h = self.<span class="fn">norm</span>(h)
+    logits = self.<span class="fn">lm_head</span>(h)
+    <span class="cm"># (B, 197 + seq_len, vocab_size)</span>
+
+    <span class="kw">return</span> logits</code></pre>
+
+<hr>
+
+<h2 id="design">Key Design Decisions</h2>
+
+<h3>Why MLP Projector?</h3>
+<p>The MLP projector (Linear + GELU + Linear) is used instead of a single linear layer because:</p>
+<ol>
+  <li>It provides non-linearity for better feature transformation</li>
+  <li>It's the standard approach in LLaVA and similar models</li>
+  <li>It's simple and effective</li>
+</ol>
+
+<h3>Why Prepend Vision Tokens?</h3>
+<p>Vision tokens are prepended (not appended) because:</p>
+<ol>
+  <li>The causal attention mask allows text tokens to attend to all vision tokens</li>
+  <li>This is the standard approach in LLaVA and Flamingo</li>
+  <li>It enables the model to "see" the image before generating text</li>
+</ol>
+
+<h3>Why Learned Positional Embeddings?</h3>
+<p>We use learned positional embeddings instead of RoPE because:</p>
+<ol>
+  <li>The sequence contains both vision and text tokens with different semantics</li>
+  <li>Learned embeddings can capture position-specific patterns</li>
+  <li>It's simpler to implement for educational purposes</li>
+</ol>
+
+<hr>
+
+<h2 id="params">Parameter Counting</h2>
+<p>For a small VLM with <code>vision_dim=64</code>, <code>lm_dim=64</code>, 2 transformer layers:</p>
+
+<table>
+  <tr><th>Component</th><th>Calculation</th><th>Approx Count</th></tr>
+  <tr><td>Vision Encoder (ViT)</td><td>Patch embedding + Transformer blocks</td><td>~250K</td></tr>
+  <tr><td>Vision Projector</td><td>64*64 + 64 + 64*64 + 64</td><td>~8K</td></tr>
+  <tr><td>Language Model</td><td>Token emb + Pos emb + Transformer blocks</td><td>~225K</td></tr>
+  <tr><td><strong>Total</strong></td><td></td><td><strong>~500K</strong></td></tr>
+</table>
+
+<hr>
+
+<h2 id="howto">How to Run</h2>
+
+<h3>Run Tests</h3>
+<pre><code><span class="cm">cd /path/to/llm-from-scratch</span>
+pytest 05-multimodal/02_vlm/tests.py -v</code></pre>
+
+<h3>Run Exercises</h3>
+<p>Open <code>exercise.py</code> and fill in the <code>TODO</code> sections. Then verify:</p>
+<pre><code>pytest 05-multimodal/02_vlm/tests.py -v</code></pre>
+
+<hr>
+
+<h2 id="exercises">Exercises</h2>
+<p>Open <code>exercise.py</code> to practice implementing the VLM yourself.</p>
+
+<h3>Exercise Order</h3>
+<ol>
+  <li><strong>VisionProjector</strong>: Create the MLP projector</li>
+  <li><strong>VLM.__init__</strong>: Create all components (vision encoder, projector, language model)</li>
+  <li><strong>VLM.forward</strong>: Wire up the pipeline (vision -&gt; project -&gt; concat -&gt; LM)</li>
+</ol>
+
+<h3>Tips</h3>
+<div class="tip">
+  <ul>
+    <li>Start with the VisionProjector. It's a simple MLP with two linear layers.</li>
+    <li>For the VLM, remember to calculate the number of vision tokens correctly (patches + CLS token).</li>
+    <li>The positional embedding must be large enough for vision + text tokens.</li>
+    <li>Don't forget weight tying between token_emb and lm_head.</li>
+  </ul>
+</div>
+
+<hr>
+
+<h2 id="takeaways">Key Takeaways</h2>
+<ol>
+  <li><strong>VLMs combine vision and language.</strong> The key is projecting vision features into the language model's embedding space.</li>
+  <li><strong>MLP projectors are simple and effective.</strong> A two-layer MLP with GELU activation works well for vision-to-language projection.</li>
+  <li><strong>Vision tokens are prepended.</strong> This allows text tokens to attend to vision tokens via causal attention.</li>
+  <li><strong>Positional embeddings handle mixed sequences.</strong> Learned positional embeddings work well for sequences containing both vision and text tokens.</li>
+  <li><strong>Weight tying reduces parameters.</strong> Sharing weights between token embedding and LM head is a common optimization.</li>
+</ol>
+
+<hr>
+
+<h2 id="reading">Further Reading</h2>
+<ul>
+  <li><a href="https://arxiv.org/abs/2304.08485">LLaVA Paper (Liu et al., 2023)</a> -- Visual Instruction Tuning</li>
+  <li><a href="https://arxiv.org/abs/2204.14198">Flamingo Paper (Alayrac et al., 2022)</a> -- Visual Language Model for Few-Shot Learning</li>
+  <li><a href="https://arxiv.org/abs/2103.00020">CLIP Paper (Radford et al., 2021)</a> -- Learning Transferable Visual Models</li>
+  <li><a href="https://arxiv.org/abs/2010.11929">ViT Paper (Dosovitskiy et al., 2020)</a> -- Vision Transformer</li>
+</ul>
+
+</main>
+</body>
+</html>

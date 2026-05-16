@@ -1,0 +1,350 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Code Interpreter - LLM From Scratch</title>
+<style>
+:root {
+  --sidebar-bg: #1a1a2e;
+  --sidebar-text: #c8c8d8;
+  --sidebar-active: #6c63ff;
+  --main-bg: #fafafa;
+  --code-bg: #282c34;
+  --code-text: #abb2bf;
+  --accent: #6c63ff;
+  --text: #2c3e50;
+  --border: #e0e0e0;
+  --heading: #1a1a2e;
+  --inline-code-bg: #f0f0f5;
+}
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  color: var(--text);
+  background: var(--main-bg);
+  display: flex;
+  min-height: 100vh;
+  line-height: 1.7;
+}
+.sidebar {
+  width: 280px;
+  background: var(--sidebar-bg);
+  color: var(--sidebar-text);
+  padding: 30px 20px;
+  position: fixed;
+  top: 0; left: 0;
+  height: 100vh;
+  overflow-y: auto;
+  z-index: 100;
+}
+.sidebar h2 { color: #fff; font-size: 1.1em; margin-bottom: 8px; padding-bottom: 12px; border-bottom: 2px solid var(--sidebar-active); }
+.sidebar .module-tag { font-size: 0.75em; color: var(--sidebar-active); text-transform: uppercase; letter-spacing: 1.5px; margin-bottom: 20px; display: block; }
+.sidebar ul { list-style: none; }
+.sidebar li { margin: 2px 0; }
+.sidebar a { color: var(--sidebar-text); text-decoration: none; display: block; padding: 6px 12px; border-radius: 6px; font-size: 0.9em; transition: all 0.2s; }
+.sidebar a:hover { background: rgba(108,99,255,0.15); color: #fff; }
+.sidebar a.active { background: var(--sidebar-active); color: #fff; }
+.main { margin-left: 280px; padding: 40px 60px; max-width: 900px; width: 100%; }
+h1 { font-size: 2.2em; color: var(--heading); margin-bottom: 8px; letter-spacing: -0.5px; }
+.subtitle { color: #888; font-size: 1em; margin-bottom: 30px; }
+h2 { font-size: 1.5em; color: var(--heading); margin: 40px 0 16px; padding-bottom: 8px; border-bottom: 2px solid var(--border); }
+h3 { font-size: 1.2em; color: var(--heading); margin: 28px 0 12px; }
+p { margin: 12px 0; }
+table { width: 100%; border-collapse: collapse; margin: 16px 0; font-size: 0.95em; }
+th, td { padding: 10px 14px; text-align: left; border: 1px solid var(--border); }
+th { background: #f0f0f5; font-weight: 600; }
+code { background: var(--inline-code-bg); padding: 2px 6px; border-radius: 4px; font-family: "SF Mono","Fira Code","Consolas", monospace; font-size: 0.9em; }
+pre { background: var(--code-bg); color: var(--code-text); padding: 20px 24px; border-radius: 10px; overflow-x: auto; margin: 16px 0; font-size: 0.88em; line-height: 1.6; }
+pre code { background: none; padding: 0; color: inherit; font-size: inherit; }
+.key-point { background: #f0f0ff; border-left: 4px solid var(--accent); padding: 14px 20px; margin: 20px 0; border-radius: 0 8px 8px 0; font-size: 0.95em; }
+.key-point strong { color: var(--accent); }
+ul, ol { margin: 10px 0 10px 24px; }
+li { margin: 4px 0; }
+hr { border: none; border-top: 1px solid var(--border); margin: 30px 0; }
+.diagram-container { display: flex; justify-content: center; margin: 24px 0; }
+svg text { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+@media (max-width: 768px) {
+  .sidebar { display: none; }
+  .main { margin-left: 0; padding: 20px; }
+}
+</style>
+</head>
+<body>
+<nav class="sidebar">
+  <h2>Code Interpreter</h2>
+  <span class="module-tag">Module 06 - Chapter 05</span>
+  <ul>
+    <li><a href="#overview" class="active">The Big Picture</a></li>
+    <li><a href="#sandbox">SandboxExecutor</a></li>
+    <li><a href="#parser">CodeParser</a></li>
+    <li><a href="#agent">CodeInterpreterAgent</a></li>
+    <li><a href="#artifacts">ArtifactStore</a></li>
+    <li><a href="#walkthrough">Forward Pass Walkthrough</a></li>
+    <li><a href="#exercises">Exercises</a></li>
+    <li><a href="#takeaways">Key Takeaways</a></li>
+    <li><a href="#further">Further Reading</a></li>
+  </ul>
+</nav>
+
+<main class="main">
+<h1>Code Interpreter</h1>
+<p class="subtitle">Module 06 -- Agents, Chapter 05</p>
+
+<p>A code interpreter allows an LLM to generate Python code, execute it in a sandboxed environment, and feed the results back for iterative refinement. This is the pattern behind tools like ChatGPT's Code Interpreter and Claude's analysis tool -- the LLM writes code, a runtime executes it, and the output informs the next step.</p>
+
+<hr>
+
+<h2 id="overview">The Big Picture</h2>
+
+<p>A code interpreter creates a generate-execute loop between an LLM and a Python runtime:</p>
+
+<div class="diagram-container">
+<svg width="520" height="420" viewBox="0 0 520 420">
+  <defs>
+    <marker id="arrow" markerWidth="10" markerHeight="7" refX="10" refY="3.5" orient="auto"><polygon points="0 0, 10 3.5, 0 7" fill="#6c63ff"/></marker>
+    <marker id="arrow-y" markerWidth="10" markerHeight="7" refX="10" refY="3.5" orient="auto"><polygon points="0 0, 10 3.5, 0 7" fill="#ffc107"/></marker>
+  </defs>
+  <!-- User task -->
+  <rect x="180" y="10" width="160" height="36" rx="8" fill="#e8e6ff" stroke="#6c63ff" stroke-width="2"/>
+  <text x="260" y="33" text-anchor="middle" fill="#1a1a2e" font-size="13" font-weight="600">User task</text>
+  <line x1="260" y1="46" x2="260" y2="66" stroke="#6c63ff" stroke-width="2" marker-end="url(#arrow)"/>
+  <!-- Agent -->
+  <rect x="140" y="70" width="240" height="36" rx="8" fill="#e8e6ff" stroke="#6c63ff" stroke-width="2"/>
+  <text x="260" y="93" text-anchor="middle" fill="#1a1a2e" font-size="13" font-weight="600">CodeInterpreterAgent</text>
+  <line x1="260" y1="106" x2="260" y2="126" stroke="#6c63ff" stroke-width="2" marker-end="url(#arrow)"/>
+  <!-- LLM generates -->
+  <rect x="100" y="130" width="320" height="36" rx="8" fill="#e8e6ff" stroke="#6c63ff" stroke-width="2"/>
+  <text x="260" y="153" text-anchor="middle" fill="#1a1a2e" font-size="12" font-weight="600">LLM generates response with ```python code blocks</text>
+  <line x1="260" y1="166" x2="260" y2="186" stroke="#6c63ff" stroke-width="2" marker-end="url(#arrow)"/>
+  <!-- CodeParser -->
+  <rect x="120" y="190" width="280" height="36" rx="8" fill="#d4edda" stroke="#28a745" stroke-width="2"/>
+  <text x="260" y="213" text-anchor="middle" fill="#1a1a2e" font-size="12" font-weight="600">CodeParser extracts code blocks</text>
+  <line x1="260" y1="226" x2="260" y2="246" stroke="#28a745" stroke-width="2" marker-end="url(#arrow)"/>
+  <!-- SandboxExecutor -->
+  <rect x="100" y="250" width="320" height="36" rx="8" fill="#fff3cd" stroke="#ffc107" stroke-width="2"/>
+  <text x="260" y="273" text-anchor="middle" fill="#1a1a2e" font-size="12" font-weight="600">SandboxExecutor runs code (isolated namespace, timeout)</text>
+  <line x1="260" y1="286" x2="260" y2="306" stroke="#ffc107" stroke-width="2" marker-end="url(#arrow-y)"/>
+  <!-- Results fed back -->
+  <rect x="100" y="310" width="320" height="36" rx="8" fill="#cce5ff" stroke="#007bff" stroke-width="2"/>
+  <text x="260" y="333" text-anchor="middle" fill="#1a1a2e" font-size="12" font-weight="600">Results fed back to LLM</text>
+  <!-- Loop arrow -->
+  <path d="M 420 328 L 460 328 L 460 148 L 420 148" stroke="#ffc107" stroke-width="2" fill="none" stroke-dasharray="5,5" marker-end="url(#arrow-y)"/>
+  <text x="475" y="240" fill="#888" font-size="11" transform="rotate(90, 475, 240)">repeat until no code</text>
+  <!-- Continue -->
+  <line x1="260" y1="346" x2="260" y2="366" stroke="#6c63ff" stroke-width="2" marker-end="url(#arrow)"/>
+  <!-- No code blocks -->
+  <rect x="80" y="370" width="360" height="36" rx="8" fill="#f8d7da" stroke="#dc3545" stroke-width="1.5"/>
+  <text x="260" y="393" text-anchor="middle" fill="#1a1a2e" font-size="12" font-weight="600">No code blocks or max_turns reached -> Final answer</text>
+</svg>
+</div>
+
+<h3>Core Components</h3>
+
+<pre><code>SandboxExecutor
+    +-- execute(code, timeout)   (run code, return output/error/success)
+    +-- namespace                (persistent across calls)
+
+CodeParser
+    +-- parse(text)              (extract ```python blocks)
+
+CodeInterpreterAgent
+    +-- run(task)                (generate-execute loop)
+    +-- sandbox: SandboxExecutor
+    +-- parser: CodeParser
+
+ArtifactStore
+    +-- store(name, data, type)  (save artifact)
+    +-- retrieve(name)           (load artifact)
+    +-- list_artifacts()         (see all names)
+    +-- clear()                  (reset)</code></pre>
+
+<div class="key-point">
+  <strong>Key Insight: The Generate-Execute Loop</strong><br>
+  The power of a code interpreter comes from iteration. The LLM does not need to get the code right on the first try -- it can see execution results, debug errors, and refine its approach. This mirrors how humans write code: try something, see the output, adjust.
+</div>
+
+<hr>
+
+<h2 id="sandbox">SandboxExecutor</h2>
+
+<p>Executes Python code in a persistent, isolated namespace. Uses <code>exec()</code> with a restricted globals dict (builtins only). Captures stdout and stderr separately. Enforces a timeout using <code>threading.Thread</code> with <code>join(timeout=...)</code>.</p>
+
+<pre><code>executor = SandboxExecutor()
+result = executor.<span class="function">execute</span>(<span class="string">"x = 42\nprint(x)"</span>)
+# result == {"output": "42\n", "error": "", "success": True}
+
+result = executor.<span class="function">execute</span>(<span class="string">"print(x + 1)"</span>)  <span class="comment"># x persists!</span>
+# result == {"output": "43\n", "error": "", "success": True}</code></pre>
+
+<div class="diagram-container">
+<svg width="440" height="260" viewBox="0 0 440 260">
+  <defs>
+    <marker id="arrow2" markerWidth="10" markerHeight="7" refX="10" refY="3.5" orient="auto"><polygon points="0 0, 10 3.5, 0 7" fill="#6c63ff"/></marker>
+  </defs>
+  <!-- Sandbox box -->
+  <rect x="40" y="10" width="360" height="240" rx="12" fill="#f8f9fa" stroke="#6c63ff" stroke-width="2" stroke-dasharray="8,4"/>
+  <text x="220" y="35" text-anchor="middle" fill="#6c63ff" font-size="13" font-weight="600">SandboxExecutor</text>
+  <!-- Input -->
+  <rect x="80" y="50" width="280" height="32" rx="6" fill="#e8e6ff" stroke="#6c63ff" stroke-width="1.5"/>
+  <text x="220" y="71" text-anchor="middle" fill="#1a1a2e" font-size="12">Code string (input)</text>
+  <line x1="220" y1="82" x2="220" y2="100" stroke="#6c63ff" stroke-width="1.5" marker-end="url(#arrow2)"/>
+  <!-- exec -->
+  <rect x="120" y="105" width="200" height="28" rx="6" fill="#fff3cd" stroke="#ffc107" stroke-width="1.5"/>
+  <text x="220" y="124" text-anchor="middle" fill="#1a1a2e" font-size="12">exec(code, namespace)</text>
+  <line x1="220" y1="133" x2="220" y2="155" stroke="#6c63ff" stroke-width="1.5" marker-end="url(#arrow2)"/>
+  <!-- Output box -->
+  <rect x="80" y="160" width="280" height="60" rx="6" fill="#fff" stroke="#ddd" stroke-width="1.5"/>
+  <text x="220" y="180" text-anchor="middle" fill="#1a1a2e" font-size="11" font-weight="600">Result dict</text>
+  <text x="220" y="196" text-anchor="middle" fill="#555" font-size="10">output | error | success</text>
+  <text x="220" y="210" text-anchor="middle" fill="#888" font-size="10">stdout captured | stderr + exceptions | bool</text>
+  <!-- Timeout label -->
+  <rect x="340" y="105" width="56" height="20" rx="4" fill="#f8d7da" stroke="#dc3545" stroke-width="1"/>
+  <text x="368" y="119" text-anchor="middle" fill="#dc3545" font-size="9" font-weight="600">timeout</text>
+  <line x1="340" y1="115" x2="320" y2="119" stroke="#dc3545" stroke-width="1"/>
+</svg>
+</div>
+
+<hr>
+
+<h2 id="parser">CodeParser</h2>
+
+<p>Extracts Python code from LLM markdown output using a regex pattern. Supports <code>python</code>, <code>py</code>, and <code>python3</code> language tags (case-insensitive). Returns a list of code strings.</p>
+
+<pre><code>parser = CodeParser()
+blocks = parser.<span class="function">parse</span>(<span class="string">"```python\nprint('hi')\n```"</span>)
+# blocks == [<span class="string">"print('hi')"</span>]</code></pre>
+
+<hr>
+
+<h2 id="agent">CodeInterpreterAgent</h2>
+
+<p>Ties everything together. Takes an LLM function and a <code>max_turns</code> limit. Runs the generate-execute loop: call the LLM, parse code blocks, execute them, feed results back, repeat.</p>
+
+<pre><code>agent = CodeInterpreterAgent(llm_fn=my_llm, max_turns=<span class="number">5</span>)
+result = agent.<span class="function">run</span>(<span class="string">"Calculate the first 10 Fibonacci numbers"</span>)</code></pre>
+
+<hr>
+
+<h2 id="artifacts">ArtifactStore</h2>
+
+<p>A simple key-value store for artifacts produced during code interpretation. Artifacts can be any Python object -- text, data, images, models.</p>
+
+<pre><code>store = ArtifactStore()
+store.<span class="function">store</span>(<span class="string">"result"</span>, [<span class="number">1</span>, <span class="number">2</span>, <span class="number">3</span>], artifact_type=<span class="string">"data"</span>)
+store.<span class="function">retrieve</span>(<span class="string">"result"</span>)  <span class="comment"># -> [1, 2, 3]</span></code></pre>
+
+<hr>
+
+<h2 id="walkthrough">Forward Pass Walkthrough</h2>
+
+<h3>Single Turn</h3>
+
+<pre><code>Task: "What is 2 + 2?"
+
+LLM: "Let me calculate:
+      ```python
+      print(2 + 2)
+      ```"
+
+Parser: extracts "print(2 + 2)"
+
+Executor: runs code -> output: "4\n"
+
+LLM: "The result is 4."
+
+No code blocks -> return "The result is 4."</code></pre>
+
+<h3>Multi-Turn with Debugging</h3>
+
+<pre><code>Task: "Calculate factorial of 10"
+
+Turn 1:
+    LLM: "```python
+          def fact(n):
+              return n * fact(n-1) if n > 1 else 1
+          print(fact(10))
+          ```"
+    Executor: RecursionError!
+    Results fed back: "Error: RecursionError: ..."
+
+Turn 2:
+    LLM: "```python
+          def fact(n):
+              r = 1
+              for i in range(2, n+1):
+                  r *= i
+              return r
+          print(fact(10))
+          ```"
+    Executor: output: "3628800\n"
+
+Turn 3:
+    LLM: "The factorial of 10 is 3,628,800."
+    No code blocks -> return answer</code></pre>
+
+<hr>
+
+<h2 id="exercises">Exercises</h2>
+
+<p>Open <code>exercise.py</code> to practice implementing the code interpreter yourself.</p>
+
+<h3>Exercise Order</h3>
+
+<ol>
+  <li><strong>SandboxExecutor</strong>: Implement namespace initialization and code execution with timeout</li>
+  <li><strong>CodeParser</strong>: Implement regex pattern and code block extraction</li>
+  <li><strong>CodeInterpreterAgent</strong>: Implement the generate-execute loop</li>
+  <li><strong>ArtifactStore</strong>: Implement store, retrieve, list, and clear</li>
+</ol>
+
+<h3>Tips</h3>
+
+<ul>
+  <li>For SandboxExecutor, use a daemon thread so it does not block the main process on timeout.</li>
+  <li>For CodeParser, use <code>re.DOTALL</code> so the <code>.</code> in the regex matches newlines.</li>
+  <li>For CodeInterpreterAgent, build the messages list incrementally -- append the assistant response and the execution results as separate messages.</li>
+  <li>The LLM function signature is <code>fn(messages: list[dict]) -> str</code>, where messages follow OpenAI format.</li>
+</ul>
+
+<hr>
+
+<h2 id="takeaways">Key Takeaways</h2>
+
+<ol>
+  <li><strong>Code execution extends LLM capabilities.</strong> By generating and running code, LLMs can perform precise calculations, data analysis, and visualization that pure text generation cannot match.</li>
+  <li><strong>The generate-execute loop is iterative.</strong> The LLM does not need to be perfect on the first try. Seeing execution results (including errors) allows it to self-correct, much like a human programmer.</li>
+  <li><strong>Sandboxing matters.</strong> Restricting the execution namespace and enforcing timeouts prevents runaway code and limits the blast radius of errors. Production systems add additional layers (containers, resource limits).</li>
+  <li><strong>Persistent state enables multi-step workflows.</strong> Variables that survive across executions let the LLM build up complex analyses incrementally -- define helpers in one turn, use them in the next.</li>
+  <li><strong>Parsing is the bridge.</strong> The code parser converts unstructured LLM text into executable code. Supporting multiple language tags and handling edge cases (no blocks, multiple blocks) makes the system robust.</li>
+</ol>
+
+<hr>
+
+<h2 id="further">Further Reading</h2>
+
+<ul>
+  <li><a href="https://openai.com/index/chatgpt-can-now-see-hear-and-speak/">OpenAI Code Interpreter</a> -- OpenAI's code execution capability</li>
+  <li><a href="https://github.com/OpenInterpreter/open-interpreter">Open Interpreter</a> -- Open-source code interpreter for LLMs</li>
+  <li><a href="https://e2b.dev/">E2B: Code Interpreting for AI</a> -- Sandboxed cloud environments for AI code execution</li>
+  <li><a href="https://docs.python.org/3/library/functions.html#exec">Exec in Python</a> -- Python documentation for exec()</li>
+</ul>
+
+</main>
+
+<script>
+const links = document.querySelectorAll('.sidebar a');
+const sections = [];
+links.forEach(link => {
+  const id = link.getAttribute('href')?.slice(1);
+  if (id) { const el = document.getElementById(id); if (el) sections.push({ id, el, link }); }
+});
+window.addEventListener('scroll', () => {
+  let current = sections[0];
+  for (const s of sections) { if (s.el.getBoundingClientRect().top < 120) current = s; }
+  links.forEach(l => l.classList.remove('active'));
+  if (current) current.link.classList.add('active');
+});
+</script>
+</body>
+</html>

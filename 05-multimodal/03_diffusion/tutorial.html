@@ -1,0 +1,420 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>DDPM Diffusion -- Module 05, Chapter 03</title>
+<style>
+  :root {
+    --sidebar-w: 260px; --bg: #f8f9fa; --sidebar-bg: #1e1e2e; --sidebar-text: #cdd6f4; --sidebar-active: #89b4fa; --accent: #89b4fa;
+    --code-bg: #282a36; --code-text: #f8f8f2; --card-bg: #ffffff; --text: #333; --heading: #1e1e2e; --border: #e0e0e0;
+    --kw: #ff79c6; --fn: #50fa7b; --str: #f1fa8c; --cm: #6272a4; --num: #bd93f9; --op: #ff79c6; --ty: #8be9fd;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; background: var(--bg); color: var(--text); line-height: 1.7; }
+  a { color: var(--accent); text-decoration: none; } a:hover { text-decoration: underline; }
+  nav.sidebar { position: fixed; top: 0; left: 0; width: var(--sidebar-w); height: 100vh; background: var(--sidebar-bg); color: var(--sidebar-text); overflow-y: auto; padding: 24px 16px; z-index: 100; font-size: 14px; line-height: 1.6; }
+  nav.sidebar .logo { font-size: 18px; font-weight: 700; color: var(--accent); margin-bottom: 8px; }
+  nav.sidebar .subtitle { font-size: 12px; color: #a6adc8; margin-bottom: 24px; border-bottom: 1px solid #313244; padding-bottom: 12px; }
+  nav.sidebar ul { list-style: none; } nav.sidebar li { margin: 2px 0; }
+  nav.sidebar li a { display: block; padding: 6px 10px; border-radius: 6px; color: var(--sidebar-text); font-size: 13px; transition: background 0.15s; }
+  nav.sidebar li a:hover { background: #313244; text-decoration: none; }
+  nav.sidebar li a.active { background: rgba(137,180,250,0.15); color: var(--sidebar-active); font-weight: 600; }
+  main { margin-left: var(--sidebar-w); max-width: 860px; padding: 40px 48px 80px; }
+  h1 { font-size: 2rem; color: var(--heading); margin-bottom: 8px; }
+  .chapter-badge { display: inline-block; background: var(--accent); color: #1e1e2e; font-size: 12px; font-weight: 700; padding: 2px 10px; border-radius: 12px; margin-bottom: 16px; }
+  h2 { font-size: 1.45rem; color: var(--heading); margin: 40px 0 16px; padding-bottom: 8px; border-bottom: 2px solid var(--accent); }
+  h3 { font-size: 1.15rem; color: var(--heading); margin: 28px 0 12px; }
+  p { margin-bottom: 14px; } ul, ol { margin: 0 0 16px 24px; } li { margin-bottom: 4px; }
+  hr { border: none; border-top: 1px solid var(--border); margin: 32px 0; }
+  code { font-family: "SF Mono", "Fira Code", "Cascadia Code", monospace; font-size: 0.88em; }
+  p code, li code, td code { background: #eef; padding: 1px 5px; border-radius: 4px; color: #d63384; }
+  pre { background: var(--code-bg); color: var(--code-text); padding: 18px 20px; border-radius: 8px; overflow-x: auto; margin-bottom: 18px; line-height: 1.55; font-size: 13.5px; }
+  pre code { background: none; color: inherit; padding: 0; }
+  .kw { color: var(--kw); } .fn { color: var(--fn); } .str { color: var(--str); } .cm { color: var(--cm); font-style: italic; } .num { color: var(--num); } .op { color: var(--op); } .ty { color: var(--ty); }
+  table { width: 100%; border-collapse: collapse; margin-bottom: 18px; font-size: 14px; }
+  th { background: var(--heading); color: #fff; text-align: left; padding: 10px 14px; font-weight: 600; }
+  td { padding: 9px 14px; border-bottom: 1px solid var(--border); } tr:nth-child(even) { background: #f4f4f8; }
+  .diagram { text-align: center; margin: 24px 0; } .diagram svg { max-width: 100%; height: auto; }
+  .tip { background: #eef6ff; border-left: 4px solid var(--accent); padding: 14px 18px; border-radius: 6px; margin-bottom: 18px; font-size: 14px; }
+  @media (max-width: 900px) { nav.sidebar { display: none; } main { margin-left: 0; padding: 24px 18px 60px; } }
+</style>
+</head>
+<body>
+
+<nav class="sidebar">
+  <div class="logo">LLM From Scratch</div>
+  <div class="subtitle">Module 05 -- Multimodal</div>
+  <ul>
+    <li><a class="active" href="#overview">The Big Picture</a></li>
+    <li><a href="#scheduler">NoiseScheduler</a></li>
+    <li><a href="#unet">UNet Architecture</a></li>
+    <li><a href="#training">DDPMTrainer</a></li>
+    <li><a href="#sampling">ddpm_sample</a></li>
+    <li><a href="#shapes">Shape Trace</a></li>
+    <li><a href="#comparison">DDPM vs Others</a></li>
+    <li><a href="#howto">How to Run</a></li>
+    <li><a href="#exercises">Exercises</a></li>
+    <li><a href="#takeaways">Key Takeaways</a></li>
+    <li><a href="#reading">Further Reading</a></li>
+  </ul>
+</nav>
+
+<main>
+
+<h1>Denoising Diffusion Probabilistic Models (DDPM)</h1>
+<span class="chapter-badge">Module 05 -- Chapter 03</span>
+
+<p>Denoising Diffusion Probabilistic Models (Ho et al., 2020) generate images by learning to reverse a gradual noising process. The forward process progressively adds Gaussian noise to clean images over T timesteps, and the reverse process learns to denoise step-by-step, recovering clean images from pure noise.</p>
+
+<h2 id="prerequisites">Prerequisites</h2>
+<ul>
+  <li>Basic understanding of neural networks and backpropagation</li>
+  <li>PyTorch basics: <code>nn.Module</code>, <code>nn.Conv2d</code>, tensor operations</li>
+  <li>Understanding of Gaussian distributions and noise</li>
+</ul>
+
+<h2>Files</h2>
+<table>
+  <tr><th>File</th><th>Purpose</th></tr>
+  <tr><td><code>diffusion.py</code></td><td>Core DDPM implementation</td></tr>
+  <tr><td><code>exercise.py</code></td><td>Fill-in-the-blank exercises</td></tr>
+  <tr><td><code>solution.py</code></td><td>Reference solutions</td></tr>
+  <tr><td><code>tests.py</code></td><td>pytest tests for correctness</td></tr>
+</table>
+
+<hr>
+
+<h2 id="overview">The Big Picture</h2>
+<p>DDPM generates images through a two-phase process:</p>
+
+<div class="diagram">
+<svg viewBox="0 0 620 440" width="600" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <marker id="a3" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto"><path d="M0,0 L8,3 L0,6 Z" fill="#89b4fa"/></marker>
+    <marker id="a3r" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto"><path d="M0,0 L8,3 L0,6 Z" fill="#e91e63"/></marker>
+  </defs>
+  <!-- Training Phase -->
+  <text x="140" y="18" text-anchor="middle" font-size="14" font-weight="700" fill="#1e1e2e">Training Phase</text>
+  <rect x="20" y="28" width="240" height="36" rx="6" fill="#eef6ff" stroke="#89b4fa" stroke-width="1.5"/>
+  <text x="140" y="51" text-anchor="middle" font-size="12" font-weight="600" fill="#1e1e2e">Clean Image x_0</text>
+  <line x1="140" y1="64" x2="140" y2="80" stroke="#89b4fa" stroke-width="1.5" marker-end="url(#a3)"/>
+  <rect x="20" y="83" width="240" height="36" rx="6" fill="#fff8e1" stroke="#f9a825" stroke-width="1.5"/>
+  <text x="140" y="106" text-anchor="middle" font-size="12" font-weight="600" fill="#1e1e2e">Forward Diffusion (add noise)</text>
+  <line x1="140" y1="119" x2="140" y2="135" stroke="#89b4fa" stroke-width="1.5" marker-end="url(#a3)"/>
+  <rect x="20" y="138" width="240" height="36" rx="6" fill="#fce4ec" stroke="#e91e63" stroke-width="1.5"/>
+  <text x="140" y="161" text-anchor="middle" font-size="12" font-weight="600" fill="#1e1e2e">Noisy Image x_t at random t</text>
+  <line x1="140" y1="174" x2="140" y2="190" stroke="#89b4fa" stroke-width="1.5" marker-end="url(#a3)"/>
+  <rect x="20" y="193" width="240" height="36" rx="6" fill="#f3e5f5" stroke="#9c27b0" stroke-width="1.5"/>
+  <text x="140" y="216" text-anchor="middle" font-size="12" font-weight="600" fill="#1e1e2e">UNet predicts noise eps_theta</text>
+  <line x1="140" y1="229" x2="140" y2="245" stroke="#89b4fa" stroke-width="1.5" marker-end="url(#a3)"/>
+  <rect x="20" y="248" width="240" height="36" rx="6" fill="#e8eaf6" stroke="#5c6bc0" stroke-width="1.5"/>
+  <text x="140" y="271" text-anchor="middle" font-size="12" font-weight="600" fill="#1e1e2e">Loss = MSE(pred_noise, actual)</text>
+
+  <!-- Generation Phase -->
+  <text x="470" y="18" text-anchor="middle" font-size="14" font-weight="700" fill="#1e1e2e">Generation Phase</text>
+  <rect x="350" y="28" width="240" height="36" rx="6" fill="#fce4ec" stroke="#e91e63" stroke-width="1.5"/>
+  <text x="470" y="51" text-anchor="middle" font-size="12" font-weight="600" fill="#1e1e2e">Pure Noise x_T ~ N(0, I)</text>
+  <line x1="470" y1="64" x2="470" y2="80" stroke="#e91e63" stroke-width="1.5" marker-end="url(#a3r)"/>
+  <rect x="350" y="83" width="240" height="36" rx="6" fill="#fff3e0" stroke="#ff9800" stroke-width="1.5"/>
+  <text x="470" y="106" text-anchor="middle" font-size="12" font-weight="600" fill="#1e1e2e">Iterative Denoising (T steps)</text>
+  <line x1="470" y1="119" x2="470" y2="135" stroke="#e91e63" stroke-width="1.5" marker-end="url(#a3r)"/>
+  <rect x="350" y="138" width="240" height="36" rx="6" fill="#eef6ff" stroke="#89b4fa" stroke-width="1.5"/>
+  <text x="470" y="161" text-anchor="middle" font-size="12" font-weight="600" fill="#1e1e2e">Clean Image x_0</text>
+</svg>
+</div>
+
+<h3>Key Insight: Learn to Denoise</h3>
+<p>The core idea is simple: instead of learning to generate images directly, learn to remove noise. If you can remove a small amount of noise at each step, you can iteratively denoise pure noise into a clean image.</p>
+
+<hr>
+
+<h2 id="scheduler">NoiseScheduler: The Diffusion Schedule</h2>
+
+<h3>Forward Process (Adding Noise)</h3>
+<pre><code>q(x_t | x_0) = N(sqrt(alpha_bar_t) * x_0, (1 - alpha_bar_t) * I)</code></pre>
+<p>This means:</p>
+<ul>
+  <li><code>x_t = sqrt(alpha_bar_t) * x_0 + sqrt(1 - alpha_bar_t) * epsilon</code></li>
+  <li>As <code>t</code> increases, <code>alpha_bar_t</code> decreases, so more noise is added</li>
+  <li>At <code>t=0</code>: almost clean (<code>alpha_bar_0 ~ 1</code>)</li>
+  <li>At <code>t=T</code>: almost pure noise (<code>alpha_bar_T ~ 0</code>)</li>
+</ul>
+
+<div class="diagram">
+<svg viewBox="0 0 600 220" width="560" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <marker id="ax" markerWidth="6" markerHeight="4" refX="6" refY="2" orient="auto"><path d="M0,0 L6,2 L0,4 Z" fill="#666"/></marker>
+    <marker id="ay" markerWidth="6" markerHeight="4" refX="6" refY="2" orient="auto"><path d="M0,0 L6,2 L0,4 Z" fill="#666"/></marker>
+  </defs>
+  <!-- Axes -->
+  <line x1="60" y1="180" x2="560" y2="180" stroke="#666" stroke-width="1.5" marker-end="url(#ax)"/>
+  <line x1="60" y1="180" x2="60" y2="20" stroke="#666" stroke-width="1.5" marker-end="url(#ay)"/>
+  <text x="310" y="210" text-anchor="middle" font-size="12" fill="#666">Timestep t</text>
+  <text x="25" y="100" text-anchor="middle" font-size="12" fill="#666" transform="rotate(-90,25,100)">alpha_bar_t</text>
+  <!-- Curve -->
+  <path d="M70,30 C150,32 300,80 550,170" fill="none" stroke="#89b4fa" stroke-width="3"/>
+  <!-- Labels -->
+  <text x="75" y="25" font-size="11" fill="#50fa7b" font-weight="600">~ 1 (clean)</text>
+  <text x="500" y="160" font-size="11" fill="#e91e63" font-weight="600">~ 0 (noise)</text>
+  <!-- Arrow -->
+  <line x1="80" y1="50" x2="200" y2="90" stroke="#ff79c6" stroke-width="1.5" stroke-dasharray="4,3"/>
+  <text x="160" y="55" font-size="10" fill="#ff79c6">noise increases</text>
+</svg>
+</div>
+
+<h3>Linear Beta Schedule</h3>
+<pre><code>beta_t = beta_start + (beta_end - beta_start) * t / T</code></pre>
+<ul>
+  <li><code>beta_t</code> controls the noise variance at step <code>t</code></li>
+  <li>Linear schedule: <code>beta_t</code> increases linearly from <code>beta_start</code> to <code>beta_end</code></li>
+  <li>Typical values: <code>beta_start = 1e-4</code>, <code>beta_end = 0.02</code></li>
+</ul>
+
+<h3>Key Quantities</h3>
+<table>
+  <tr><th>Symbol</th><th>Formula</th><th>Meaning</th></tr>
+  <tr><td><code>beta_t</code></td><td>Linear schedule</td><td>Noise variance at step t</td></tr>
+  <tr><td><code>alpha_t</code></td><td><code>1 - beta_t</code></td><td>Signal preservation at step t</td></tr>
+  <tr><td><code>alpha_bar_t</code></td><td><code>prod(alpha_1...alpha_t)</code></td><td>Cumulative signal preservation</td></tr>
+  <tr><td><code>sqrt(alpha_bar_t)</code></td><td><code>sqrt(prod(alpha_1...alpha_t))</code></td><td>Signal coefficient</td></tr>
+  <tr><td><code>sqrt(1 - alpha_bar_t)</code></td><td><code>sqrt(1 - prod(alpha_1...alpha_t))</code></td><td>Noise coefficient</td></tr>
+</table>
+
+<h3>Reverse Process (Denoising)</h3>
+<pre><code>x_{t-1} = (1/sqrt(alpha_t)) * (x_t - beta_t/sqrt(1-alpha_bar_t) * eps_theta(x_t, t)) + sigma_t * z</code></pre>
+<p>Where:</p>
+<ul>
+  <li><code>eps_theta(x_t, t)</code> is the predicted noise from the UNet</li>
+  <li><code>sigma_t</code> is the posterior standard deviation</li>
+  <li><code>z ~ N(0, I)</code> is random noise (except at t=0)</li>
+</ul>
+
+<hr>
+
+<h2 id="unet">UNet: Noise Prediction Network</h2>
+
+<p>The UNet predicts the noise added to an image at a given timestep.</p>
+
+<h3>Architecture</h3>
+
+<div class="diagram">
+<svg viewBox="0 0 580 460" width="560" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <marker id="au" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto"><path d="M0,0 L8,3 L0,6 Z" fill="#89b4fa"/></marker>
+  </defs>
+  <!-- Time Embedding -->
+  <rect x="200" y="8" width="180" height="30" rx="6" fill="#fff8e1" stroke="#f9a825" stroke-width="1.5"/>
+  <text x="290" y="28" text-anchor="middle" font-size="11" font-weight="600" fill="#1e1e2e">Time Embedding: sin -> MLP</text>
+  <line x1="290" y1="38" x2="290" y2="52" stroke="#89b4fa" stroke-width="1.2" marker-end="url(#au)"/>
+
+  <!-- Init Conv -->
+  <rect x="200" y="55" width="180" height="28" rx="6" fill="#eef6ff" stroke="#89b4fa" stroke-width="1.5"/>
+  <text x="290" y="74" text-anchor="middle" font-size="11" font-weight="600" fill="#1e1e2e">Initial Conv</text>
+  <line x1="290" y1="83" x2="290" y2="98" stroke="#89b4fa" stroke-width="1.2" marker-end="url(#au)"/>
+
+  <!-- Encoder -->
+  <rect x="30" y="100" width="140" height="28" rx="6" fill="#f0fff4" stroke="#50fa7b" stroke-width="1.5"/>
+  <text x="100" y="119" text-anchor="middle" font-size="10" font-weight="600" fill="#1e1e2e">Enc Level 1: ResBlock</text>
+  <line x1="170" y1="114" x2="200" y2="114" stroke="#50fa7b" stroke-width="1" stroke-dasharray="4,3"/>
+  <text x="185" y="108" font-size="9" fill="#50fa7b">skip1</text>
+
+  <rect x="30" y="145" width="140" height="28" rx="6" fill="#f0fff4" stroke="#50fa7b" stroke-width="1.5"/>
+  <text x="100" y="164" text-anchor="middle" font-size="10" font-weight="600" fill="#1e1e2e">Enc Level 2: ResBlock</text>
+  <line x1="170" y1="159" x2="200" y2="159" stroke="#50fa7b" stroke-width="1" stroke-dasharray="4,3"/>
+  <text x="185" y="153" font-size="9" fill="#50fa7b">skip2</text>
+
+  <rect x="30" y="190" width="140" height="28" rx="6" fill="#f0fff4" stroke="#50fa7b" stroke-width="1.5"/>
+  <text x="100" y="209" text-anchor="middle" font-size="10" font-weight="600" fill="#1e1e2e">Enc Level 3: ResBlock</text>
+  <line x1="170" y1="204" x2="200" y2="204" stroke="#50fa7b" stroke-width="1" stroke-dasharray="4,3"/>
+  <text x="185" y="198" font-size="9" fill="#50fa7b">skip3</text>
+
+  <!-- Downsample arrows -->
+  <text x="100" y="140" text-anchor="middle" font-size="14" fill="#999">v (stride-2)</text>
+  <text x="100" y="185" text-anchor="middle" font-size="14" fill="#999">v (stride-2)</text>
+
+  <!-- Bottleneck -->
+  <rect x="210" y="235" width="160" height="36" rx="6" fill="#fce4ec" stroke="#e91e63" stroke-width="1.5"/>
+  <text x="290" y="258" text-anchor="middle" font-size="11" font-weight="600" fill="#1e1e2e">Bottleneck: 2x ResBlock</text>
+  <line x1="290" y1="235" x2="290" y2="218" stroke="#89b4fa" stroke-width="1.2" marker-end="url(#au)"/>
+
+  <!-- Decoder -->
+  <rect x="410" y="190" width="140" height="28" rx="6" fill="#e8eaf6" stroke="#5c6bc0" stroke-width="1.5"/>
+  <text x="480" y="209" text-anchor="middle" font-size="10" font-weight="600" fill="#1e1e2e">Dec Level 3: ResBlock</text>
+  <line x1="370" y1="271" x2="410" y2="204" stroke="#89b4fa" stroke-width="1.2" marker-end="url(#au)"/>
+  <line x1="400" y1="204" x2="410" y2="204" stroke="#50fa7b" stroke-width="1" stroke-dasharray="4,3"/>
+
+  <rect x="410" y="145" width="140" height="28" rx="6" fill="#e8eaf6" stroke="#5c6bc0" stroke-width="1.5"/>
+  <text x="480" y="164" text-anchor="middle" font-size="10" font-weight="600" fill="#1e1e2e">Dec Level 2: ResBlock</text>
+  <line x1="400" y1="159" x2="410" y2="159" stroke="#50fa7b" stroke-width="1" stroke-dasharray="4,3"/>
+
+  <rect x="410" y="100" width="140" height="28" rx="6" fill="#e8eaf6" stroke="#5c6bc0" stroke-width="1.5"/>
+  <text x="480" y="119" text-anchor="middle" font-size="10" font-weight="600" fill="#1e1e2e">Dec Level 1: ResBlock</text>
+  <line x1="400" y1="114" x2="410" y2="114" stroke="#50fa7b" stroke-width="1" stroke-dasharray="4,3"/>
+
+  <!-- Upsample arrows -->
+  <text x="480" y="140" text-anchor="middle" font-size="14" fill="#999">^ (transpose conv)</text>
+  <text x="480" y="185" text-anchor="middle" font-size="14" fill="#999">^ (transpose conv)</text>
+
+  <!-- Final -->
+  <line x1="480" y1="100" x2="480" y2="83" stroke="#89b4fa" stroke-width="1.2" marker-end="url(#au)"/>
+  <rect x="380" y="50" width="200" height="30" rx="6" fill="#fff3e0" stroke="#ff9800" stroke-width="1.5"/>
+  <text x="480" y="70" text-anchor="middle" font-size="11" font-weight="600" fill="#1e1e2e">GroupNorm + SiLU + Conv</text>
+  <line x1="480" y1="80" x2="480" y2="80" stroke="#89b4fa" stroke-width="1.2"/>
+
+  <!-- Output -->
+  <rect x="380" y="10" width="200" height="30" rx="6" fill="#eef6ff" stroke="#89b4fa" stroke-width="1.5"/>
+  <text x="480" y="30" text-anchor="middle" font-size="11" font-weight="600" fill="#1e1e2e">Predicted Noise (B,C,H,W)</text>
+</svg>
+</div>
+
+<h3>Time Embedding</h3>
+<p>Sinusoidal embeddings (like Transformer positional encodings) encode the timestep into a dense vector:</p>
+<pre><code>emb = [sin(t * freq_1), cos(t * freq_1), sin(t * freq_2), cos(t * freq_2), ...]</code></pre>
+<p>This allows the model to know which timestep it's denoising.</p>
+
+<h3>ResBlock</h3>
+<p>Each residual block:</p>
+<ol>
+  <li>Apply GroupNorm + SiLU + Conv2d</li>
+  <li>Add time embedding (broadcast across spatial dimensions)</li>
+  <li>Apply GroupNorm + SiLU + Conv2d</li>
+  <li>Add skip connection</li>
+</ol>
+
+<h3>Skip Connections</h3>
+<p>The UNet's key feature: encoder features are concatenated with decoder features at each resolution level. This preserves spatial information lost during downsampling.</p>
+
+<hr>
+
+<h2 id="training">DDPMTrainer: Training Loop</h2>
+<p>The training objective is simple:</p>
+<pre><code><span class="cm"># 1. Sample clean image</span>
+x_0 = <span class="fn">sample_from_dataset</span>()
+
+<span class="cm"># 2. Sample random timestep</span>
+t = <span class="fn">randint</span>(<span class="num">0</span>, T)
+
+<span class="cm"># 3. Sample noise</span>
+epsilon = <span class="fn">randn_like</span>(x_0)
+
+<span class="cm"># 4. Create noisy image</span>
+x_t = <span class="fn">sqrt</span>(alpha_bar_t) * x_0 + <span class="fn">sqrt</span>(<span class="num">1</span> - alpha_bar_t) * epsilon
+
+<span class="cm"># 5. Predict noise</span>
+predicted_epsilon = <span class="fn">model</span>(x_t, t)
+
+<span class="cm"># 6. Compute loss</span>
+loss = <span class="fn">MSE</span>(predicted_epsilon, epsilon)</code></pre>
+<p>The model learns to predict the noise that was added. This is equivalent to learning the score function (gradient of the log probability density).</p>
+
+<hr>
+
+<h2 id="sampling">ddpm_sample: Generation</h2>
+<p>Generation iteratively denoises from pure noise:</p>
+<pre><code><span class="cm"># Start from pure noise</span>
+x_T = <span class="fn">randn</span>(shape)
+
+<span class="cm"># Denoise from T-1 to 0</span>
+<span class="kw">for</span> t <span class="kw">in</span> <span class="fn">reversed</span>(<span class="fn">range</span>(T)):
+    predicted_noise = <span class="fn">model</span>(x_t, t)
+    x_{t-1} = <span class="fn">reverse_step</span>(predicted_noise, t, x_t)
+
+<span class="cm"># Final output</span>
+<span class="kw">return</span> x_0</code></pre>
+<p>Each step removes a small amount of noise. After T steps, we have a clean image.</p>
+
+<hr>
+
+<h2 id="shapes">Shape Trace</h2>
+<p>For a batch of 2 images (3x16x16) with base_channels=16, channel_mults=(1,2):</p>
+<table>
+  <tr><th>Stage</th><th>Shape</th><th>Description</th></tr>
+  <tr><td>Input</td><td>(2, 3, 16, 16)</td><td>noisy images</td></tr>
+  <tr><td>Time Embedding</td><td>(2, 32)</td><td>timestep embeddings</td></tr>
+  <tr><td>Init Conv</td><td>(2, 16, 16, 16)</td><td>initial features</td></tr>
+  <tr><td>Encoder Level 1</td><td>(2, 16, 16, 16)</td><td>ResBlock + skip</td></tr>
+  <tr><td>Downsample</td><td>(2, 16, 8, 8)</td><td>stride-2 conv</td></tr>
+  <tr><td>Encoder Level 2</td><td>(2, 32, 8, 8)</td><td>ResBlock + skip</td></tr>
+  <tr><td>Bottleneck</td><td>(2, 32, 8, 8)</td><td>2x ResBlock</td></tr>
+  <tr><td>Decoder Level 2</td><td>(2, 32+32, 8, 8) -&gt; (2, 32, 8, 8)</td><td>concat + ResBlock</td></tr>
+  <tr><td>Upsample</td><td>(2, 32, 16, 16)</td><td>transpose conv</td></tr>
+  <tr><td>Decoder Level 1</td><td>(2, 32+16, 16, 16) -&gt; (2, 16, 16, 16)</td><td>concat + ResBlock</td></tr>
+  <tr><td>Final Conv</td><td>(2, 3, 16, 16)</td><td>predicted noise</td></tr>
+</table>
+
+<hr>
+
+<h2 id="comparison">DDPM vs Other Generative Models</h2>
+<table>
+  <tr><th>Aspect</th><th>GAN</th><th>VAE</th><th>DDPM</th></tr>
+  <tr><td>Training</td><td>Adversarial (min-max)</td><td>ELBO optimization</td><td>Simple MSE loss</td></tr>
+  <tr><td>Stability</td><td>Mode collapse, instabilities</td><td>Posterior collapse</td><td>Stable, reproducible</td></tr>
+  <tr><td>Quality</td><td>Sharp images</td><td>Blurry images</td><td>High quality</td></tr>
+  <tr><td>Speed</td><td>Single forward pass</td><td>Single forward pass</td><td>Many steps (slow)</td></tr>
+  <tr><td>Diversity</td><td>Limited by mode collapse</td><td>Good</td><td>Excellent</td></tr>
+  <tr><td>Likelihood</td><td>No</td><td>Lower bound</td><td>Lower bound</td></tr>
+</table>
+
+<hr>
+
+<h2 id="howto">How to Run</h2>
+
+<h3>Run Tests</h3>
+<pre><code><span class="cm">cd /path/to/llm-from-scratch</span>
+pytest 05-multimodal/03_diffusion/tests.py -v</code></pre>
+
+<h3>Run Exercises</h3>
+<p>Open <code>exercise.py</code> and fill in the <code>TODO</code> sections. Then verify:</p>
+<pre><code>pytest 05-multimodal/03_diffusion/tests.py -v</code></pre>
+
+<hr>
+
+<h2 id="exercises">Exercises</h2>
+<p>Open <code>exercise.py</code> to practice implementing DDPM yourself.</p>
+
+<h3>Exercise Order</h3>
+<ol>
+  <li><strong>NoiseScheduler</strong>: Implement beta schedule, alpha_bar computation, add_noise, and reverse step</li>
+  <li><strong>SinusoidalTimeEmbedding</strong>: Implement sinusoidal positional encoding for timesteps</li>
+  <li><strong>ResBlock</strong>: Implement residual block with time embedding injection</li>
+  <li><strong>DDPMTrainer</strong>: Implement the training loop with noise prediction loss</li>
+</ol>
+
+<h3>Tips</h3>
+<div class="tip">
+  <ul>
+    <li>The forward process is just a weighted sum: <code>x_t = signal * x_0 + noise * epsilon</code></li>
+    <li>The reverse process predicts and removes noise at each step</li>
+    <li>Time embeddings let the model know which timestep it's working with</li>
+    <li>Skip connections in the UNet preserve spatial information</li>
+    <li>The training loss is simply MSE between predicted and actual noise</li>
+  </ul>
+</div>
+
+<hr>
+
+<h2 id="takeaways">Key Takeaways</h2>
+<ol>
+  <li><strong>DDPM learns to reverse noise.</strong> Instead of generating images directly, learn to denoise step-by-step.</li>
+  <li><strong>The forward process is tractable.</strong> We can compute <code>x_t</code> for any <code>t</code> in closed form using <code>alpha_bar_t</code>.</li>
+  <li><strong>The reverse process is learned.</strong> A UNet predicts the noise at each step, which is used to denoise.</li>
+  <li><strong>Training is simple.</strong> Just sample a timestep, add noise, predict the noise, and compute MSE loss.</li>
+  <li><strong>Generation is iterative.</strong> Start from pure noise and denoise for T steps. This is slow but produces high-quality samples.</li>
+  <li><strong>Time embeddings are crucial.</strong> The model needs to know which timestep it's denoising to predict the correct amount of noise.</li>
+</ol>
+
+<hr>
+
+<h2 id="reading">Further Reading</h2>
+<ul>
+  <li><a href="https://arxiv.org/abs/2006.11239">DDPM Paper (Ho et al., 2020)</a> -- Original DDPM paper</li>
+  <li><a href="https://arxiv.org/abs/2102.09672">Improved DDPM (Nichol & Dhariwal, 2021)</a> -- Improved noise schedule and sampling</li>
+  <li><a href="https://arxiv.org/abs/2303.14643">Denoising Diffusion-based Generative Modeling (2023)</a> -- Comprehensive tutorial</li>
+  <li><a href="https://arxiv.org/abs/1907.05600">Score-Based Generative Modeling (Song & Ermon, 2019)</a> -- Connection to score matching</li>
+  <li><a href="https://lilianweng.github.io/posts/2021-07-11-diffusion-models/">What are Diffusion Models? (Lil'Log)</a> -- Excellent blog post explanation</li>
+</ul>
+
+</main>
+</body>
+</html>

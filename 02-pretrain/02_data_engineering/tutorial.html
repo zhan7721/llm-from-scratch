@@ -1,0 +1,564 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Data Engineering - LLM Pretraining</title>
+<style>
+:root {
+  --bg: #0f1117;
+  --bg-secondary: #161822;
+  --sidebar-bg: #1a1d2e;
+  --text: #e2e8f0;
+  --text-muted: #94a3b8;
+  --accent: #60a5fa;
+  --accent2: #a78bfa;
+  --accent3: #34d399;
+  --border: #2d3148;
+  --code-bg: #1e2235;
+  --inline-code-bg: #2a2f45;
+}
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  line-height: 1.7;
+  display: flex;
+}
+.sidebar {
+  width: 280px;
+  background: var(--sidebar-bg);
+  border-right: 1px solid var(--border);
+  padding: 24px 0;
+  position: fixed;
+  top: 0; left: 0; bottom: 0;
+  overflow-y: auto;
+  z-index: 100;
+}
+.sidebar h2 {
+  color: var(--accent);
+  font-size: 14px;
+  text-transform: uppercase;
+  letter-spacing: 1.5px;
+  padding: 0 20px 16px;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 12px;
+}
+.sidebar a {
+  display: block;
+  color: var(--text-muted);
+  text-decoration: none;
+  padding: 8px 20px;
+  font-size: 14px;
+  transition: all 0.2s;
+  border-left: 3px solid transparent;
+}
+.sidebar a:hover, .sidebar a.active {
+  color: var(--accent);
+  background: rgba(96,165,250,0.08);
+  border-left-color: var(--accent);
+}
+.sidebar .chapter-link {
+  color: var(--accent2);
+  font-weight: 600;
+  margin-top: 8px;
+}
+.content {
+  margin-left: 280px;
+  flex: 1;
+  padding: 48px 64px;
+  max-width: 960px;
+}
+h1 {
+  font-size: 2.4em;
+  color: #fff;
+  margin-bottom: 8px;
+  letter-spacing: -0.5px;
+}
+.subtitle {
+  color: var(--accent2);
+  font-size: 1.1em;
+  margin-bottom: 32px;
+  padding-bottom: 24px;
+  border-bottom: 1px solid var(--border);
+}
+h2 {
+  font-size: 1.6em;
+  color: #fff;
+  margin-top: 48px;
+  margin-bottom: 16px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--border);
+}
+h3 {
+  font-size: 1.2em;
+  color: var(--accent);
+  margin-top: 32px;
+  margin-bottom: 12px;
+}
+p { margin-bottom: 16px; }
+ul, ol { margin-bottom: 16px; padding-left: 24px; }
+li { margin-bottom: 6px; }
+pre {
+  background: var(--code-bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 20px;
+  overflow-x: auto;
+  margin-bottom: 20px;
+  font-size: 14px;
+  line-height: 1.6;
+}
+code {
+  font-family: "SF Mono", "Fira Code", "JetBrains Mono", monospace;
+  font-size: 0.9em;
+}
+p code, li code {
+  background: var(--inline-code-bg);
+  padding: 2px 6px;
+  border-radius: 4px;
+  color: var(--accent3);
+}
+.kw { color: #c792ea; }
+.fn { color: #82aaff; }
+.str { color: #c3e88d; }
+.cm { color: #546e7a; }
+.num { color: #f78c6c; }
+.op { color: #89ddff; }
+.dec { color: #ffcb6b; }
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-bottom: 20px;
+}
+th {
+  background: var(--sidebar-bg);
+  color: var(--accent);
+  text-align: left;
+  padding: 10px 16px;
+  font-size: 14px;
+  border-bottom: 2px solid var(--border);
+}
+td {
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--border);
+  font-size: 14px;
+}
+.diagram-container {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 32px;
+  margin: 24px 0;
+  text-align: center;
+}
+.diagram-container svg { max-width: 100%; }
+.callout {
+  background: rgba(96,165,250,0.08);
+  border-left: 4px solid var(--accent);
+  padding: 16px 20px;
+  margin: 20px 0;
+  border-radius: 0 8px 8px 0;
+  font-size: 14px;
+}
+.callout strong { color: var(--accent); }
+.prereq {
+  background: rgba(167,139,250,0.08);
+  border-left: 4px solid var(--accent2);
+  padding: 16px 20px;
+  margin: 20px 0;
+  border-radius: 0 8px 8px 0;
+  font-size: 14px;
+}
+.summary-table td:first-child {
+  font-weight: 600;
+  color: var(--accent3);
+  white-space: nowrap;
+}
+@media (max-width: 900px) {
+  .sidebar { display: none; }
+  .content { margin-left: 0; padding: 24px 20px; }
+}
+</style>
+</head>
+<body>
+<nav class="sidebar">
+  <h2>Data Engineering</h2>
+  <a href="#why">Why Data Quality Matters</a>
+  <a href="#pipeline">The Data Pipeline</a>
+  <a href="#minhash">MinHash + LSH</a>
+  <a href="#quality">Quality Filtering</a>
+  <a href="#mixing">Data Mixing</a>
+  <a href="#real-world">Real-World Pipelines</a>
+  <a href="#running">Running the Code</a>
+  <a href="#takeaways">Key Takeaways</a>
+  <div style="margin-top:24px; padding-top:16px; border-top:1px solid var(--border);">
+    <a class="chapter-link" href="../01_data_pipeline/tutorial.html">Chapter 01: Data Pipeline</a>
+    <a class="chapter-link" href="../03_training_loop/tutorial.html">Chapter 03: Training Loop</a>
+    <a class="chapter-link" href="../04_distributed_training/tutorial.html">Chapter 04: Distributed Training</a>
+    <a class="chapter-link" href="../05_scaling_laws/tutorial.html">Chapter 05: Scaling Laws</a>
+    <a class="chapter-link" href="../06_evaluation/tutorial.html">Chapter 06: Evaluation</a>
+  </div>
+</nav>
+
+<main class="content">
+<h1>Data Engineering for LLM Pretraining</h1>
+<p class="subtitle">Module 02 -- Pretraining, Chapter 02</p>
+
+<p>Data quality is arguably the single most important factor in training capable language models. As the saying goes: garbage in, garbage out. This chapter covers three core data engineering techniques used in modern LLM pretraining pipelines.</p>
+
+<h2 id="why">Why Data Quality Matters</h2>
+<p>The data used to pretrain an LLM shapes everything the model learns. A model trained on noisy, duplicated, or low-quality text will produce noisy, low-quality outputs. Key findings from recent research:</p>
+<ul>
+  <li><strong>GPT-3</strong> (2020): Careful filtering of Common Crawl data was essential. They trained a classifier to distinguish "high-quality" web text from low-quality pages.</li>
+  <li><strong>The Pile</strong> (2020): EleutherAI showed that a carefully curated mixture of 22 diverse datasets produces better models than raw web scrapes alone.</li>
+  <li><strong>Chinchilla</strong> (2022): DeepMind demonstrated that data quality matters more than sheer quantity -- a smaller model trained on better data can outperform a larger model trained on worse data.</li>
+  <li><strong>FineWeb</strong> (2024): HuggingFace showed that aggressive quality filtering of Common Crawl yields a dataset that outperforms all prior open web datasets.</li>
+</ul>
+
+<h3 id="pipeline">The Data Pipeline</h3>
+<p>A typical pretraining data pipeline follows these stages:</p>
+
+<div class="diagram-container">
+  <svg viewBox="0 0 300 520" xmlns="http://www.w3.org/2000/svg" width="300">
+    <defs>
+      <marker id="arr2" markerWidth="10" markerHeight="7" refX="10" refY="3.5" orient="auto">
+        <polygon points="0 0, 10 3.5, 0 7" fill="#60a5fa"/>
+      </marker>
+    </defs>
+    <rect x="50" y="10" width="200" height="40" rx="8" fill="#1e2235" stroke="#60a5fa" stroke-width="1.5"/>
+    <text x="150" y="35" text-anchor="middle" fill="#e2e8f0" font-size="14" font-family="sans-serif">Raw Crawl Data</text>
+
+    <line x1="150" y1="50" x2="150" y2="70" stroke="#60a5fa" stroke-width="2" marker-end="url(#arr2)"/>
+
+    <rect x="50" y="70" width="200" height="40" rx="8" fill="#1e2235" stroke="#a78bfa" stroke-width="1.5"/>
+    <text x="150" y="95" text-anchor="middle" fill="#a78bfa" font-size="13" font-family="sans-serif">URL Filtering</text>
+
+    <line x1="150" y1="110" x2="150" y2="130" stroke="#60a5fa" stroke-width="2" marker-end="url(#arr2)"/>
+
+    <rect x="50" y="130" width="200" height="40" rx="8" fill="#1e2235" stroke="#a78bfa" stroke-width="1.5"/>
+    <text x="150" y="155" text-anchor="middle" fill="#a78bfa" font-size="13" font-family="sans-serif">Text Extraction (HTML to text)</text>
+
+    <line x1="150" y1="170" x2="150" y2="190" stroke="#60a5fa" stroke-width="2" marker-end="url(#arr2)"/>
+
+    <rect x="50" y="190" width="200" height="40" rx="8" fill="#1e2235" stroke="#a78bfa" stroke-width="1.5"/>
+    <text x="150" y="215" text-anchor="middle" fill="#a78bfa" font-size="13" font-family="sans-serif">Language Detection</text>
+
+    <line x1="150" y1="230" x2="150" y2="250" stroke="#60a5fa" stroke-width="2" marker-end="url(#arr2)"/>
+
+    <rect x="50" y="250" width="200" height="40" rx="8" fill="#1e2235" stroke="#34d399" stroke-width="2"/>
+    <text x="150" y="275" text-anchor="middle" fill="#34d399" font-size="13" font-weight="bold" font-family="sans-serif">Deduplication</text>
+
+    <line x1="150" y1="290" x2="150" y2="310" stroke="#60a5fa" stroke-width="2" marker-end="url(#arr2)"/>
+
+    <rect x="50" y="310" width="200" height="40" rx="8" fill="#1e2235" stroke="#34d399" stroke-width="2"/>
+    <text x="150" y="335" text-anchor="middle" fill="#34d399" font-size="13" font-weight="bold" font-family="sans-serif">Quality Filtering</text>
+
+    <line x1="150" y1="350" x2="150" y2="370" stroke="#60a5fa" stroke-width="2" marker-end="url(#arr2)"/>
+
+    <rect x="50" y="370" width="200" height="40" rx="8" fill="#1e2235" stroke="#34d399" stroke-width="2"/>
+    <text x="150" y="395" text-anchor="middle" fill="#34d399" font-size="13" font-weight="bold" font-family="sans-serif">Data Mixing</text>
+
+    <line x1="150" y1="410" x2="150" y2="430" stroke="#60a5fa" stroke-width="2" marker-end="url(#arr2)"/>
+
+    <rect x="50" y="430" width="200" height="40" rx="8" fill="#1e2235" stroke="#ffcb6b" stroke-width="1.5"/>
+    <text x="150" y="455" text-anchor="middle" fill="#ffcb6b" font-size="13" font-family="sans-serif">Tokenization</text>
+
+    <text x="270" y="275" fill="#34d399" font-size="11" font-family="sans-serif">This chapter</text>
+    <line x1="252" y1="270" x2="265" y2="270" stroke="#34d399" stroke-width="1.5"/>
+  </svg>
+</div>
+
+<p>This chapter implements the deduplication, quality filtering, and data mixing stages.</p>
+
+<h2 id="minhash">MinHash + LSH: Near-Duplicate Detection</h2>
+
+<h3>The Problem</h3>
+<p>Exact duplicate detection is easy -- just hash each document. But near-duplicates are common and harmful:</p>
+<ul>
+  <li>The same Wikipedia article scraped from different mirrors with minor formatting differences</li>
+  <li>News articles syndicated across outlets with slight edits</li>
+  <li>Boilerplate text repeated across thousands of pages (privacy policies, terms of service)</li>
+</ul>
+<p>Training on near-duplicates wastes compute and biases the model toward repeated patterns.</p>
+
+<h3>Shingling</h3>
+<p>To compare documents, we first convert them to sets of <strong>shingles</strong> -- overlapping character n-grams. For example, with n=5:</p>
+<pre><code><span class="str">"hello world"</span> -> {<span class="str">"hello"</span>, <span class="str">"ello "</span>, <span class="str">"llo w"</span>, <span class="str">"lo wo"</span>, <span class="str">"o wor"</span>, <span class="str">" worl"</span>, <span class="str">"world"</span>}</code></pre>
+
+<p>The Jaccard similarity between two documents' shingle sets measures their overlap:</p>
+<pre><code>J(A, B) = |A <span class="kw">intersection</span> B| / |A <span class="kw">union</span> B|</code></pre>
+
+<p>A Jaccard similarity of 1.0 means identical shingle sets; 0.0 means no overlap.</p>
+
+<h3>MinHash Signatures</h3>
+<p>Computing Jaccard similarity directly is expensive for large shingle sets. MinHash provides an efficient approximation:</p>
+<ol>
+  <li>Define <code>k</code> random hash functions <code>h_1, h_2, ..., h_k</code></li>
+  <li>For each hash function, compute the minimum hash value across all shingles in the document</li>
+  <li>The resulting <code>k</code> values form the document's <strong>MinHash signature</strong></li>
+</ol>
+<p>The key insight: for two sets A and B, <code>P(h_min(A) == h_min(B)) = J(A, B)</code>. So the fraction of matching positions in two signatures estimates their Jaccard similarity.</p>
+
+<div class="diagram-container">
+  <svg viewBox="0 0 600 240" xmlns="http://www.w3.org/2000/svg" width="600">
+    <text x="300" y="20" text-anchor="middle" fill="#e2e8f0" font-size="15" font-weight="bold" font-family="sans-serif">MinHash Signature Computation</text>
+
+    <!-- Document -->
+    <rect x="20" y="40" width="120" height="50" rx="8" fill="#1e2235" stroke="#60a5fa" stroke-width="1.5"/>
+    <text x="80" y="60" text-anchor="middle" fill="#60a5fa" font-size="13" font-family="sans-serif">Document</text>
+    <text x="80" y="78" text-anchor="middle" fill="#94a3b8" font-size="11" font-family="sans-serif">Shingles set</text>
+
+    <line x1="140" y1="65" x2="180" y2="65" stroke="#60a5fa" stroke-width="2"/>
+
+    <!-- Hash functions -->
+    <rect x="180" y="30" width="140" height="70" rx="8" fill="#1e2235" stroke="#a78bfa" stroke-width="1.5"/>
+    <text x="250" y="50" text-anchor="middle" fill="#a78bfa" font-size="13" font-family="sans-serif">Hash Functions</text>
+    <text x="250" y="70" text-anchor="middle" fill="#94a3b8" font-size="11" font-family="monospace">h1, h2, h3, ...</text>
+    <text x="250" y="88" text-anchor="middle" fill="#94a3b8" font-size="11" font-family="monospace">k functions</text>
+
+    <line x1="320" y1="65" x2="360" y2="65" stroke="#60a5fa" stroke-width="2"/>
+
+    <!-- Signature -->
+    <rect x="360" y="40" width="220" height="50" rx="8" fill="#1e2235" stroke="#34d399" stroke-width="1.5"/>
+    <text x="470" y="60" text-anchor="middle" fill="#34d399" font-size="13" font-family="sans-serif">Signature</text>
+    <text x="470" y="78" text-anchor="middle" fill="#94a3b8" font-size="11" font-family="monospace">[min_h1, min_h2, ..., min_hk]</text>
+
+    <!-- Comparison -->
+    <rect x="100" y="130" width="160" height="50" rx="8" fill="#1e2235" stroke="#34d399" stroke-width="1"/>
+    <text x="180" y="150" text-anchor="middle" fill="#34d399" font-size="12" font-family="monospace">Sig A: [42, 17, 88, ...]</text>
+    <text x="180" y="170" text-anchor="middle" fill="#94a3b8" font-size="11" font-family="sans-serif">Doc A</text>
+
+    <rect x="340" y="130" width="160" height="50" rx="8" fill="#1e2235" stroke="#34d399" stroke-width="1"/>
+    <text x="420" y="150" text-anchor="middle" fill="#34d399" font-size="12" font-family="monospace">Sig B: [42, 17, 99, ...]</text>
+    <text x="420" y="170" text-anchor="middle" fill="#94a3b8" font-size="11" font-family="sans-serif">Doc B</text>
+
+    <line x1="260" y1="155" x2="340" y2="155" stroke="#60a5fa" stroke-width="2"/>
+
+    <rect x="200" y="200" width="200" height="30" rx="8" fill="rgba(52,211,153,0.15)" stroke="#34d399" stroke-width="1"/>
+    <text x="300" y="220" text-anchor="middle" fill="#34d399" font-size="13" font-family="sans-serif">~2/3 match &#8594; J &#8776; 0.67</text>
+  </svg>
+</div>
+
+<h3>Locality-Sensitive Hashing (LSH)</h3>
+<p>Even with MinHash, pairwise comparison of all signatures is O(n<sup>2</sup>). LSH accelerates this by:</p>
+<ol>
+  <li>Dividing each signature into <code>b</code> bands of <code>r</code> rows</li>
+  <li>Hashing each band to a bucket</li>
+  <li>Only comparing documents that share at least one bucket</li>
+</ol>
+<p>This turns the problem from O(n<sup>2</sup>) to approximately O(n), with tunable sensitivity via the band/row ratio.</p>
+
+<h3>Implementation Walkthrough</h3>
+<pre><code><span class="kw">class</span> <span class="fn">MinHashDeduplicator</span>:
+    <span class="kw">def</span> <span class="fn">__init__</span>(<span class="dec">self</span>, num_hashes=<span class="num">128</span>, ngram_size=<span class="num">5</span>, threshold=<span class="num">0.8</span>):
+        ...
+
+    <span class="kw">def</span> <span class="fn">_get_shingles</span>(<span class="dec">self</span>, text):
+        <span class="cm"># Extract character n-grams</span>
+        text = text.lower().strip()
+        <span class="kw">return</span> {text[i:i+<span class="dec">self</span>.ngram_size] <span class="kw">for</span> i <span class="kw">in</span> <span class="fn">range</span>(<span class="fn">len</span>(text) - <span class="dec">self</span>.ngram_size + <span class="num">1</span>)}
+
+    <span class="kw">def</span> <span class="fn">_minhash</span>(<span class="dec">self</span>, shingles):
+        <span class="cm"># For each hash function, find the minimum hash across all shingles</span>
+        signature = []
+        <span class="kw">for</span> a, b <span class="kw">in</span> <span class="dec">self</span>.hash_params:
+            min_hash = <span class="fn">float</span>(<span class="str">'inf'</span>)
+            <span class="kw">for</span> shingle <span class="kw">in</span> shingles:
+                h = (a * <span class="fn">hash</span>(shingle) + b) & <span class="num">0xFFFFFFFF</span>
+                min_hash = <span class="fn">min</span>(min_hash, h)
+            signature.append(min_hash)
+        <span class="kw">return</span> signature
+
+    <span class="kw">def</span> <span class="fn">_estimate_similarity</span>(<span class="dec">self</span>, sig1, sig2):
+        <span class="cm"># Fraction of matching positions estimates Jaccard similarity</span>
+        matches = <span class="fn">sum</span>(<span class="num">1</span> <span class="kw">for</span> a, b <span class="kw">in</span> <span class="fn">zip</span>(sig1, sig2) <span class="kw">if</span> a == b)
+        <span class="kw">return</span> matches / <span class="fn">len</span>(sig1)
+
+    <span class="kw">def</span> <span class="fn">deduplicate</span>(<span class="dec">self</span>, documents):
+        <span class="cm"># Compute signatures, then pairwise compare</span>
+        signatures = [<span class="dec">self</span>._minhash(<span class="dec">self</span>._get_shingles(doc)) <span class="kw">for</span> doc <span class="kw">in</span> documents]
+        keep = [<span class="num">True</span>] * <span class="fn">len</span>(documents)
+        <span class="kw">for</span> i <span class="kw">in</span> <span class="fn">range</span>(<span class="fn">len</span>(documents)):
+            <span class="kw">for</span> j <span class="kw">in</span> <span class="fn">range</span>(i+<span class="num">1</span>, <span class="fn">len</span>(documents)):
+                <span class="kw">if</span> <span class="dec">self</span>._estimate_similarity(signatures[i], signatures[j]) >= <span class="dec">self</span>.threshold:
+                    keep[j] = <span class="num">False</span>
+        <span class="kw">return</span> [doc <span class="kw">for</span> doc, k <span class="kw">in</span> <span class="fn">zip</span>(documents, keep) <span class="kw">if</span> k]</code></pre>
+
+<h2 id="quality">Quality Filtering</h2>
+<p>Not all web text is suitable for training. Quality filters remove documents that are likely to degrade model performance.</p>
+
+<h3>Common Quality Signals</h3>
+<table>
+  <tr><th>Signal</th><th>Why It Matters</th></tr>
+  <tr><td>Word count</td><td>Too few words = not informative; too many = likely a data dump</td></tr>
+  <tr><td>Alpha ratio</td><td>Low ratio means lots of numbers, code, or garbled text</td></tr>
+  <tr><td>Digit ratio</td><td>High ratio means numerical data, tables, or spam</td></tr>
+  <tr><td>Average word length</td><td>Very short = possibly not real text; very long = possibly URLs or hashes</td></tr>
+</table>
+
+<h3>Advanced Filters (Not Implemented Here)</h3>
+<p>Production pipelines use additional filters:</p>
+<ul>
+  <li><strong>Perplexity filtering</strong>: Use a small LM to score text; reject very low perplexity (repetitive) or very high perplexity (garbled) documents</li>
+  <li><strong>Classifier-based filtering</strong>: Train a classifier to distinguish Wikipedia-like text from random web text (GPT-3 approach)</li>
+  <li><strong>PII detection</strong>: Remove documents containing emails, phone numbers, SSNs</li>
+  <li><strong>Toxicity filtering</strong>: Remove hateful, offensive, or harmful content</li>
+  <li><strong>Heuristic rules</strong>: Excessive capitalization, too many special characters, repeated n-grams</li>
+</ul>
+
+<h3>Implementation Walkthrough</h3>
+<pre><code><span class="kw">class</span> <span class="fn">QualityFilter</span>:
+    <span class="kw">def</span> <span class="fn">_is_quality</span>(<span class="dec">self</span>, text):
+        words = text.split()
+        n_words = <span class="fn">len</span>(words)
+
+        <span class="cm"># Check word count bounds</span>
+        <span class="kw">if</span> n_words < <span class="dec">self</span>.min_words <span class="kw">or</span> n_words > <span class="dec">self</span>.max_words:
+            <span class="kw">return</span> <span class="num">False</span>
+
+        <span class="cm"># Check that enough characters are alphabetic</span>
+        alpha_count = <span class="fn">sum</span>(<span class="num">1</span> <span class="kw">for</span> c <span class="kw">in</span> text <span class="kw">if</span> c.isalpha())
+        <span class="kw">if</span> alpha_count / <span class="fn">max</span>(<span class="fn">len</span>(text), <span class="num">1</span>) < <span class="dec">self</span>.min_alpha_ratio:
+            <span class="kw">return</span> <span class="num">False</span>
+
+        <span class="cm"># Check that not too many characters are digits</span>
+        digit_count = <span class="fn">sum</span>(<span class="num">1</span> <span class="kw">for</span> c <span class="kw">in</span> text <span class="kw">if</span> c.isdigit())
+        <span class="kw">if</span> digit_count / <span class="fn">max</span>(<span class="fn">len</span>(text), <span class="num">1</span>) > <span class="dec">self</span>.max_digit_ratio:
+            <span class="kw">return</span> <span class="num">False</span>
+
+        <span class="cm"># Check average word length</span>
+        avg_word_len = <span class="fn">sum</span>(<span class="fn">len</span>(w) <span class="kw">for</span> w <span class="kw">in</span> words) / <span class="fn">max</span>(n_words, <span class="num">1</span>)
+        <span class="kw">if</span> <span class="kw">not</span> (<span class="dec">self</span>.min_avg_word_len <= avg_word_len <= <span class="dec">self</span>.max_avg_word_len):
+            <span class="kw">return</span> <span class="num">False</span>
+
+        <span class="kw">return</span> <span class="num">True</span></code></pre>
+
+<h2 id="mixing">Data Mixing</h2>
+
+<h3>Why Mix Sources?</h3>
+<p>LLMs benefit from diverse training data. A model trained only on Wikipedia will be knowledgeable but rigid; one trained only on web text will be fluent but unreliable. The key is finding the right mixture.</p>
+
+<h3>Domain Ratios</h3>
+<p>Common mixing strategies:</p>
+<ul>
+  <li><strong>Proportional</strong>: Sample from each source proportional to its size (large web corpora dominate)</li>
+  <li><strong>Upsampling</strong>: Over-represent high-quality sources (Wikipedia, books) relative to their natural frequency</li>
+  <li><strong>Temperature-based</strong>: Use temperature scaling to smooth or sharpen the distribution</li>
+</ul>
+<p>GPT-3's mixture (simplified):</p>
+<ul>
+  <li>60% filtered Common Crawl</li>
+  <li>22% WebText2</li>
+  <li>16% Books (Books1 + Books2)</li>
+  <li>3% Wikipedia</li>
+</ul>
+
+<div class="diagram-container">
+  <svg viewBox="0 0 500 180" xmlns="http://www.w3.org/2000/svg" width="500">
+    <text x="250" y="20" text-anchor="middle" fill="#e2e8f0" font-size="14" font-weight="bold" font-family="sans-serif">GPT-3 Training Data Mix</text>
+    <!-- Bar -->
+    <rect x="40" y="40" width="60" height="100" rx="4" fill="rgba(96,165,250,0.4)" stroke="#60a5fa" stroke-width="1"/>
+    <text x="70" y="95" text-anchor="middle" fill="#e2e8f0" font-size="12" font-family="sans-serif">60%</text>
+    <text x="70" y="160" text-anchor="middle" fill="#94a3b8" font-size="11" font-family="sans-serif">Common</text>
+    <text x="70" y="175" text-anchor="middle" fill="#94a3b8" font-size="11" font-family="sans-serif">Crawl</text>
+
+    <rect x="120" y="75" width="60" height="65" rx="4" fill="rgba(167,139,250,0.4)" stroke="#a78bfa" stroke-width="1"/>
+    <text x="150" y="112" text-anchor="middle" fill="#e2e8f0" font-size="12" font-family="sans-serif">22%</text>
+    <text x="150" y="160" text-anchor="middle" fill="#94a3b8" font-size="11" font-family="sans-serif">WebText2</text>
+
+    <rect x="200" y="82" width="60" height="58" rx="4" fill="rgba(52,211,153,0.4)" stroke="#34d399" stroke-width="1"/>
+    <text x="230" y="115" text-anchor="middle" fill="#e2e8f0" font-size="12" font-family="sans-serif">16%</text>
+    <text x="230" y="160" text-anchor="middle" fill="#94a3b8" font-size="11" font-family="sans-serif">Books</text>
+
+    <rect x="280" y="128" width="60" height="12" rx="4" fill="rgba(247,140,108,0.4)" stroke="#f78c6c" stroke-width="1"/>
+    <text x="310" y="155" text-anchor="middle" fill="#e2e8f0" font-size="12" font-family="sans-serif">3%</text>
+    <text x="310" y="175" text-anchor="middle" fill="#94a3b8" font-size="11" font-family="sans-serif">Wikipedia</text>
+  </svg>
+</div>
+
+<h3>Curriculum Learning</h3>
+<p>Some research suggests ordering data by quality or difficulty:</p>
+<ol>
+  <li>Start with cleaner, simpler text</li>
+  <li>Gradually introduce more complex or noisy data</li>
+  <li>End with the highest-quality data</li>
+</ol>
+<p>This can improve convergence speed and final performance, though the evidence is mixed.</p>
+
+<h3>Implementation Walkthrough</h3>
+<pre><code><span class="kw">class</span> <span class="fn">DataMixer</span>:
+    <span class="kw">def</span> <span class="fn">__init__</span>(<span class="dec">self</span>, ratios):
+        <span class="cm"># Normalize ratios to sum to 1.0</span>
+        total = <span class="fn">sum</span>(ratios.values())
+        <span class="dec">self</span>.ratios = {k: v / total <span class="kw">for</span> k, v <span class="kw">in</span> ratios.items()}
+
+    <span class="kw">def</span> <span class="fn">mix</span>(<span class="dec">self</span>, data, total_tokens=<span class="num">None</span>, tokens_per_doc=<span class="num">512</span>):
+        <span class="kw">if</span> total_tokens <span class="kw">is</span> <span class="num">None</span>:
+            <span class="cm"># Proportional mixing from available data</span>
+            min_docs = <span class="fn">min</span>(<span class="fn">len</span>(docs) <span class="kw">for</span> docs <span class="kw">in</span> data.values())
+            result = []
+            <span class="kw">for</span> source, ratio <span class="kw">in</span> <span class="dec">self</span>.ratios.items():
+                n = <span class="fn">max</span>(<span class="num">1</span>, <span class="fn">int</span>(min_docs * ratio))
+                result.extend(data[source][:n])
+            <span class="kw">return</span> result
+
+        <span class="cm"># Token-budget mixing</span>
+        result = []
+        <span class="kw">for</span> source, ratio <span class="kw">in</span> <span class="dec">self</span>.ratios.items():
+            n_docs = <span class="fn">max</span>(<span class="num">1</span>, <span class="fn">int</span>((total_tokens * ratio) / tokens_per_doc))
+            result.extend(data[source][:n_docs])
+        <span class="kw">return</span> result</code></pre>
+
+<h2 id="real-world">Real-World Data Pipelines</h2>
+
+<h3>The Pile (EleutherAI, 2020)</h3>
+<p>A 825 GiB English text corpus designed for LLM training, composed of 22 diverse sub-corpora:</p>
+<ul>
+  <li>Pile-CC (filtered Common Crawl)</li>
+  <li>PubMed, ArXiv, GitHub, StackExchange</li>
+  <li>Wikipedia, BookCorpus2, Project Gutenberg</li>
+  <li>And many more</li>
+</ul>
+<p>Key innovation: diversity through intentional source mixing rather than relying on a single massive crawl.</p>
+
+<h3>RedPajama (Together AI, 2023)</h3>
+<p>An open reproduction of the LLaMA training data recipe:</p>
+<ul>
+  <li>1.2 trillion tokens</li>
+  <li>Sources: Common Crawl, C4, GitHub, Wikipedia, Books, ArXiv, StackExchange</li>
+  <li>Documented filtering and deduplication pipeline</li>
+</ul>
+
+<h3>FineWeb (HuggingFace, 2024)</h3>
+<p>A 15 trillion token dataset from Common Crawl with extensive filtering:</p>
+<ul>
+  <li>URL filtering (remove known low-quality domains)</li>
+  <li>Text extraction with trafilatura</li>
+  <li>Language identification with fastText</li>
+  <li>MinHash deduplication</li>
+  <li>Perplexity filtering with a small LM</li>
+  <li>Repetition and quality heuristics</li>
+</ul>
+<p>FineWeb-Edu further filters for "educational" content using a classifier trained on educational web pages.</p>
+
+<h2 id="running">Running the Code</h2>
+<pre><code><span class="cm"># Run the tests</span>
+pytest tests.py -v
+
+<span class="cm"># Try the exercises</span>
+<span class="cm"># Edit exercise.py to implement the TODO sections, then run tests</span>
+pytest tests.py -v</code></pre>
+
+<h2 id="takeaways">Key Takeaways</h2>
+<ol>
+  <li><strong>Deduplication is essential</strong>: Near-duplicates waste compute and bias training. MinHash provides an efficient approximation for large-scale dedup.</li>
+  <li><strong>Quality filtering improves results</strong>: Simple heuristics (word count, character ratios) can dramatically improve dataset quality. Production pipelines use classifier-based filtering.</li>
+  <li><strong>Mixing ratios matter</strong>: The proportion of different data sources significantly affects model capabilities. High-quality sources should be upsampled relative to their natural frequency.</li>
+  <li><strong>The pipeline is iterative</strong>: Data engineering is not a one-shot process. Expect to iterate on filters, thresholds, and ratios based on downstream model performance.</li>
+</ol>
+
+</main>
+</body>
+</html>

@@ -1,0 +1,387 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Transformer Block: Pre-Norm, SwiGLU, RMSNorm - LLM From Scratch</title>
+<style>
+:root { --bg: #1a1b26; --sidebar-bg: #13141b; --card-bg: #1e2030; --text: #c0caf5; --text-muted: #565f89; --accent: #7aa2f7; --accent2: #bb9af7; --green: #9ece6a; --orange: #ff9e64; --red: #f7768e; --cyan: #7dcfff; --border: #292e42; --code-bg: #15161e; --font: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans SC', sans-serif; --mono: 'SF Mono', 'Fira Code', 'Consolas', monospace; }
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { font-family: var(--font); background: var(--bg); color: var(--text); line-height: 1.8; display: flex; }
+.sidebar { width: 280px; min-height: 100vh; background: var(--sidebar-bg); padding: 2rem 1.5rem; position: fixed; top: 0; left: 0; overflow-y: auto; border-right: 1px solid var(--border); }
+.sidebar h2 { color: var(--accent); font-size: 1.1rem; margin-bottom: 1.5rem; padding-bottom: 0.5rem; border-bottom: 1px solid var(--border); }
+.sidebar a { display: block; color: var(--text-muted); text-decoration: none; padding: 0.4rem 0; font-size: 0.9rem; transition: color 0.2s; }
+.sidebar a:hover { color: var(--accent); }
+.sidebar .chapter-nav { margin-top: 2rem; padding-top: 1rem; border-top: 1px solid var(--border); }
+.sidebar .chapter-nav a { color: var(--green); font-size: 0.85rem; }
+.main { margin-left: 280px; padding: 3rem 4rem; max-width: 900px; width: 100%; }
+h1 { font-size: 2.2rem; color: var(--accent); margin-bottom: 0.5rem; }
+.subtitle { color: var(--text-muted); font-size: 1rem; margin-bottom: 2rem; }
+h2 { font-size: 1.5rem; color: var(--accent2); margin: 2.5rem 0 1rem; padding-bottom: 0.3rem; border-bottom: 1px solid var(--border); }
+h3 { font-size: 1.2rem; color: var(--green); margin: 2rem 0 0.8rem; }
+h4 { font-size: 1.05rem; color: var(--orange); margin: 1.5rem 0 0.5rem; }
+p { margin-bottom: 1rem; }
+blockquote { border-left: 3px solid var(--accent); padding: 0.8rem 1.2rem; margin: 1.2rem 0; background: var(--card-bg); border-radius: 0 8px 8px 0; font-style: italic; }
+pre { background: var(--code-bg); border: 1px solid var(--border); border-radius: 8px; padding: 1.2rem; overflow-x: auto; margin: 1rem 0 1.5rem; font-size: 0.9rem; }
+code { font-family: var(--mono); }
+p code, li code { background: var(--code-bg); padding: 0.15rem 0.4rem; border-radius: 4px; font-size: 0.85em; color: var(--cyan); }
+table { width: 100%; border-collapse: collapse; margin: 1rem 0 1.5rem; }
+th { background: var(--card-bg); color: var(--accent); text-align: left; padding: 0.6rem 1rem; border: 1px solid var(--border); }
+td { padding: 0.6rem 1rem; border: 1px solid var(--border); }
+ul, ol { margin: 0.5rem 0 1.2rem 1.5rem; }
+li { margin-bottom: 0.3rem; }
+hr { border: none; border-top: 1px solid var(--border); margin: 2rem 0; }
+strong { color: var(--accent); }
+.diagram-container { background: var(--card-bg); border-radius: 12px; padding: 2rem; margin: 1.5rem 0; text-align: center; border: 1px solid var(--border); }
+.diagram-container svg { max-width: 100%; }
+.key-point { background: linear-gradient(135deg, var(--card-bg), #1a2332); border-radius: 8px; padding: 1rem 1.2rem; margin: 1rem 0; border: 1px solid var(--accent); }
+.step-box { background: var(--card-bg); border-radius: 8px; padding: 1rem 1.2rem; margin: 0.8rem 0; border-left: 3px solid var(--green); }
+.step-box .step-num { color: var(--green); font-weight: bold; }
+a { color: var(--accent); text-decoration: none; }
+a:hover { text-decoration: underline; }
+@media (max-width: 900px) { .sidebar { display: none; } .main { margin-left: 0; padding: 2rem 1.5rem; } }
+</style>
+</head>
+<body>
+<nav class="sidebar">
+  <h2>Transformer Block</h2>
+  <a href="#big-picture">The Big Picture</a>
+  <a href="#rmsnorm">RMSNorm</a>
+  <a href="#swiglu">SwiGLU</a>
+  <a href="#pre-norm">Pre-Norm vs Post-Norm</a>
+  <a href="#residual">Residual Connections</a>
+  <a href="#putting-together">Putting It All Together</a>
+  <a href="#design-choices">Design Choices in Modern LLMs</a>
+  <a href="#how-to-run">How to Run</a>
+  <a href="#exercises">Exercises</a>
+  <a href="#takeaways">Key Takeaways</a>
+  <a href="#further-reading">Further Reading</a>
+  <div class="chapter-nav">
+    <a href="../03_attention/tutorial.html">&larr; 03 Attention</a><br>
+    <a href="../05_model_architecture/tutorial.html">05 Model Architecture &rarr;</a>
+  </div>
+</nav>
+
+<div class="main">
+<h1>Transformer Block: Pre-Norm, SwiGLU, and RMSNorm</h1>
+<p class="subtitle">Module 01 &mdash; Foundations, Chapter 04</p>
+
+<p>A transformer model is built by stacking identical <strong>transformer blocks</strong>. Each block takes a sequence of token representations and refines them through two sub-layers: attention (mixing information across positions) and a feed-forward network (transforming each position independently). In this chapter we implement a modern transformer block using the design choices found in LLaMA, PaLM, and other state-of-the-art models:</p>
+
+<ol>
+  <li><strong>RMSNorm</strong> &mdash; a simpler, faster alternative to LayerNorm</li>
+  <li><strong>SwiGLU</strong> &mdash; a gated feed-forward network that outperforms ReLU FFNs</li>
+  <li><strong>Pre-Norm residual structure</strong> &mdash; normalization before each sub-layer for training stability</li>
+</ol>
+
+<hr>
+
+<h2 id="big-picture">The Big Picture</h2>
+
+<p>A single transformer block transforms an input sequence as follows:</p>
+
+<pre><code>Input: x (batch_size, seq_len, d_model)
+
+    x = x + Attention(RMSNorm(x))      # sub-layer 1: self-attention
+    x = x + SwiGLU(RMSNorm(x))         # sub-layer 2: feed-forward
+
+Output: x (batch_size, seq_len, d_model)</code></pre>
+
+<p>The <code>+</code> signs are <strong>residual connections</strong> &mdash; they add the input directly to the output of each sub-layer. This is critical for training deep networks.</p>
+
+<div class="diagram-container">
+<svg width="700" height="300" viewBox="0 0 700 300">
+  <defs><marker id="arr4" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M 0 0 L 10 5 L 0 10 z" fill="#7aa2f7"/></marker></defs>
+  <text x="350" y="20" text-anchor="middle" fill="#c0caf5" font-size="14" font-weight="bold">Transformer Block (Pre-Norm)</text>
+  <!-- Input -->
+  <rect x="280" y="35" width="140" height="35" rx="6" fill="#1e2030" stroke="#565f89"/>
+  <text x="350" y="57" text-anchor="middle" fill="#565f89" font-size="12">Input x</text>
+  <!-- Attention sub-layer -->
+  <line x1="350" y1="75" x2="350" y2="95" stroke="#565f89" marker-end="url(#arr4)"/>
+  <rect x="230" y="100" width="80" height="35" rx="6" fill="#1e2030" stroke="#bb9af7"/>
+  <text x="270" y="122" text-anchor="middle" fill="#bb9af7" font-size="11">RMSNorm</text>
+  <line x1="320" y1="117" x2="370" y2="117" stroke="#565f89" marker-end="url(#arr4)"/>
+  <rect x="380" y="100" width="100" height="35" rx="6" fill="#1e2030" stroke="#7aa2f7"/>
+  <text x="430" y="122" text-anchor="middle" fill="#7aa2f7" font-size="11">Attention</text>
+  <!-- Residual add -->
+  <line x1="430" y1="140" x2="430" y2="160" stroke="#565f89" marker-end="url(#arr4)"/>
+  <rect x="310" y="160" width="80" height="30" rx="15" fill="#1e2030" stroke="#ff9e64"/>
+  <text x="350" y="180" text-anchor="middle" fill="#ff9e64" font-size="11">+ (residual)</text>
+  <path d="M 350 75 L 350 85 L 290 85 L 290 175 L 310 175" stroke="#565f89" fill="none" stroke-dasharray="4,2" marker-end="url(#arr4)"/>
+  <!-- FFN sub-layer -->
+  <line x1="350" y1="195" x2="350" y2="215" stroke="#565f89" marker-end="url(#arr4)"/>
+  <rect x="230" y="220" width="80" height="35" rx="6" fill="#1e2030" stroke="#bb9af7"/>
+  <text x="270" y="242" text-anchor="middle" fill="#bb9af7" font-size="11">RMSNorm</text>
+  <line x1="320" y1="237" x2="370" y2="237" stroke="#565f89" marker-end="url(#arr4)"/>
+  <rect x="380" y="220" width="100" height="35" rx="6" fill="#1e2030" stroke="#9ece6a"/>
+  <text x="430" y="242" text-anchor="middle" fill="#9ece6a" font-size="11">SwiGLU</text>
+  <line x1="430" y1="260" x2="430" y2="275" stroke="#565f89" marker-end="url(#arr4)"/>
+  <rect x="310" y="275" width="80" height="30" rx="15" fill="#1e2030" stroke="#ff9e64"/>
+  <text x="350" y="295" text-anchor="middle" fill="#ff9e64" font-size="11">+ (residual)</text>
+  <path d="M 350 195 L 350 205 L 290 205 L 290 290 L 310 290" stroke="#565f89" fill="none" stroke-dasharray="4,2" marker-end="url(#arr4)"/>
+</svg>
+</div>
+
+<hr>
+
+<h2 id="rmsnorm">RMSNorm: Root Mean Square Normalization</h2>
+
+<h3>What It Does</h3>
+
+<p>RMSNorm normalizes the input vector so that its "energy" (root mean square) is approximately 1, then applies a learnable scale:</p>
+
+<pre><code>RMSNorm(x) = x / RMS(x) * weight
+where RMS(x) = sqrt(mean(x^2) + eps)</code></pre>
+
+<h3>Comparison with LayerNorm</h3>
+
+<table>
+  <tr><th>Property</th><th>LayerNorm</th><th>RMSNorm</th></tr>
+  <tr><td>Mean subtraction</td><td>Yes</td><td>No</td></tr>
+  <tr><td>Denominator</td><td>Std deviation</td><td>Root mean square</td></tr>
+  <tr><td>Bias parameter</td><td>Yes</td><td>No</td></tr>
+  <tr><td>Learnable scale</td><td>Yes</td><td>Yes</td></tr>
+  <tr><td>Computation</td><td>More expensive</td><td>Cheaper</td></tr>
+</table>
+
+<h3>Why RMSNorm Works</h3>
+
+<p>The original paper (Zhang & Sennrich, 2019) showed that the re-centering (mean subtraction) in LayerNorm is not essential. What matters most is the re-scaling &mdash; keeping the magnitude of activations under control. RMSNorm provides this at lower computational cost.</p>
+
+<h3>Code Walkthrough</h3>
+
+<pre><code>class RMSNorm(nn.Module):
+    def __init__(self, d_model: int, eps: float = 1e-6):
+        super().__init__()
+        self.weight = nn.Parameter(torch.ones(d_model))  # learnable scale
+        self.eps = eps
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        rms = torch.sqrt(x.pow(2).mean(-1, keepdim=True) + self.eps)
+        return x / rms * self.weight</code></pre>
+
+<p>Key details:</p>
+<ul>
+  <li><code>x.pow(2).mean(-1, keepdim=True)</code> computes the mean of squared values along the last dimension.</li>
+  <li>Adding <code>eps</code> before the square root prevents division by zero.</li>
+  <li><code>self.weight</code> is initialized to all ones, so at the start of training, RMSNorm is approximately an identity function.</li>
+</ul>
+
+<hr>
+
+<h2 id="swiglu">SwiGLU: Gated Feed-Forward Network</h2>
+
+<h3>The Standard FFN</h3>
+
+<pre><code>FFN(x) = W2 * ReLU(W1 * x + b1) + b2</code></pre>
+
+<p>This projects the input to a higher dimension (typically 4x), applies a nonlinearity, then projects back.</p>
+
+<h3>SwiGLU: Gating Is Better</h3>
+
+<p>SwiGLU (Shazeer, 2020) replaces the simple ReLU activation with a <strong>gated</strong> mechanism:</p>
+
+<pre><code>SwiGLU(x) = W2 * (SiLU(W_gate * x) * W1 * x)</code></pre>
+
+<p>where:</p>
+<ul>
+  <li><code>W1 * x</code> is the "value" &mdash; the information to pass through</li>
+  <li><code>W_gate * x</code> is the "gate" &mdash; controls how much of the value to let through</li>
+  <li><code>SiLU</code> (Swish) is the activation: <code>SiLU(x) = x * sigmoid(x)</code></li>
+  <li>The <code>*</code> is element-wise multiplication (the gating operation)</li>
+</ul>
+
+<div class="diagram-container">
+<svg width="600" height="160" viewBox="0 0 600 160">
+  <text x="300" y="20" text-anchor="middle" fill="#c0caf5" font-size="13" font-weight="bold">SwiGLU Architecture</text>
+  <rect x="30" y="60" width="80" height="40" rx="6" fill="#1e2030" stroke="#565f89"/>
+  <text x="70" y="85" text-anchor="middle" fill="#565f89" font-size="12">Input x</text>
+  <line x1="120" y1="75" x2="170" y2="55" stroke="#565f89" marker-end="url(#arr4)"/>
+  <line x1="120" y1="85" x2="170" y2="105" stroke="#565f89" marker-end="url(#arr4)"/>
+  <rect x="180" y="40" width="100" height="35" rx="6" fill="#1e2030" stroke="#bb9af7"/>
+  <text x="230" y="62" text-anchor="middle" fill="#bb9af7" font-size="11">W_gate</text>
+  <rect x="180" y="85" width="100" height="35" rx="6" fill="#1e2030" stroke="#9ece6a"/>
+  <text x="230" y="107" text-anchor="middle" fill="#9ece6a" font-size="11">W1 (value)</text>
+  <line x1="290" y1="57" x2="330" y2="57" stroke="#565f89" marker-end="url(#arr4)"/>
+  <rect x="340" y="45" width="70" height="30" rx="6" fill="#1e2030" stroke="#f7768e"/>
+  <text x="375" y="65" text-anchor="middle" fill="#f7768e" font-size="10">SiLU</text>
+  <line x1="420" y1="60" x2="450" y2="80" stroke="#565f89" marker-end="url(#arr4)"/>
+  <rect x="440" y="70" width="50" height="30" rx="15" fill="#1e2030" stroke="#ff9e64"/>
+  <text x="465" y="90" text-anchor="middle" fill="#ff9e64" font-size="12">*</text>
+  <line x1="290" y1="102" x2="440" y2="85" stroke="#565f89" marker-end="url(#arr4)"/>
+  <line x1="500" y1="85" x2="530" y2="85" stroke="#565f89" marker-end="url(#arr4)"/>
+  <rect x="540" y="65" width="50" height="40" rx="6" fill="#1e2030" stroke="#7dcfff"/>
+  <text x="565" y="90" text-anchor="middle" fill="#7dcfff" font-size="11">W2</text>
+</svg>
+</div>
+
+<h3>Why the Hidden Dimension Formula</h3>
+
+<p>With SwiGLU, the default hidden dimension is:</p>
+
+<pre><code>d_ff = (2/3) * 4 * d_model    (rounded to nearest multiple of 256)</code></pre>
+
+<p>This is because SwiGLU has <strong>three</strong> weight matrices (W1, W_gate, W2) instead of two. The <code>(2/3)</code> factor brings the parameter count back to roughly the same as the standard FFN.</p>
+
+<h3>Code Walkthrough</h3>
+
+<pre><code>class SwiGLU(nn.Module):
+    def __init__(self, d_model: int, d_ff: int = None):
+        super().__init__()
+        if d_ff is None:
+            d_ff = int(2 * (4 * d_model) / 3)
+            d_ff = ((d_ff + 255) // 256) * 256  # round to multiple of 256
+
+        self.w1 = nn.Linear(d_model, d_ff, bias=False)
+        self.w_gate = nn.Linear(d_model, d_ff, bias=False)
+        self.w2 = nn.Linear(d_ff, d_model, bias=False)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        return self.w2(F.silu(self.w_gate(x)) * self.w1(x))</code></pre>
+
+<hr>
+
+<h2 id="pre-norm">Pre-Norm vs Post-Norm</h2>
+
+<h3>Post-Norm (Original Transformer)</h3>
+
+<pre><code>x = LayerNorm(x + Attention(x))
+x = LayerNorm(x + FFN(x))</code></pre>
+
+<h3>Pre-Norm (GPT-2, LLaMA, and beyond)</h3>
+
+<pre><code>x = x + Attention(LayerNorm(x))
+x = x + FFN(LayerNorm(x))</code></pre>
+
+<h3>Why Pre-Norm Is Better</h3>
+
+<h4>Gradient Flow</h4>
+
+<p>In Post-Norm, the gradient must pass through the LayerNorm at every layer. For a network with L layers, the gradient is multiplied by L normalization operations, each of which can shrink or distort it.</p>
+
+<p>In Pre-Norm, the residual connection provides a <strong>direct gradient path</strong> from the output to the input:</p>
+
+<pre><code>d_output / d_input = 1 + d_sublayer / d_input
+                     ^            ^
+                     |            |
+                direct path   contribution from sub-layer</code></pre>
+
+<p>The <code>1</code> ensures the gradient is at least as large as the upstream gradient.</p>
+
+<h4>Training Stability</h4>
+
+<p>Post-Norm models are sensitive to learning rate, warmup, and initialization. Pre-Norm models are much more forgiving. They can train with higher learning rates, less warmup, and standard initialization.</p>
+
+<hr>
+
+<h2 id="residual">Residual Connections</h2>
+
+<p>Residual connections (He et al., 2015) are the single most important architectural innovation for training deep networks. They work by adding the input directly to the output:</p>
+
+<pre><code>output = x + F(x)    # with residual
+output = F(x)         # without residual</code></pre>
+
+<h3>Three Key Benefits</h3>
+
+<ol>
+  <li><strong>Gradient Highway</strong>: During backpropagation, the gradient includes a term that is simply <code>1</code> (the identity). The gradient can flow directly without being attenuated.</li>
+  <li><strong>Easier Optimization</strong>: The sub-layer only needs to learn the <em>residual</em> <code>F(x) = output - x</code>, not the entire transformation.</li>
+  <li><strong>Identity Initialization</strong>: At the start of training, with near-zero weights, <code>F(x) = 0</code>, so <code>output = x</code>. The network starts as an identity function.</li>
+</ol>
+
+<hr>
+
+<h2 id="putting-together">Putting It All Together</h2>
+
+<h3>The Full TransformerBlock</h3>
+
+<pre><code>class TransformerBlock(nn.Module):
+    def __init__(self, d_model, n_heads, d_ff=None, causal=True):
+        super().__init__()
+        self.attn_norm = RMSNorm(d_model)
+        self.attn = MultiHeadAttention(d_model, n_heads, causal=causal)
+        self.ffn_norm = RMSNorm(d_model)
+        self.ffn = SwiGLU(d_model, d_ff)
+
+    def forward(self, x):
+        x = x + self.attn(self.attn_norm(x))
+        x = x + self.ffn(self.ffn_norm(x))
+        return x</code></pre>
+
+<h3>Parameter Count per Block</h3>
+
+<table>
+  <tr><th>Component</th><th>Parameters</th></tr>
+  <tr><td>RMSNorm (x2)</td><td>2 * d_model</td></tr>
+  <tr><td>Attention (Q, K, V, O)</td><td>4 * d_model^2</td></tr>
+  <tr><td>SwiGLU (W1, W_gate, W2)</td><td>3 * d_model * d_ff</td></tr>
+  <tr><td><strong>Total</strong></td><td>~4 * d_model^2 + 3 * d_model * d_ff + 2 * d_model</td></tr>
+</table>
+
+<hr>
+
+<h2 id="design-choices">Design Choices in Modern LLMs</h2>
+
+<table>
+  <tr><th>Component</th><th>Original Transformer</th><th>LLaMA / Modern LLMs</th></tr>
+  <tr><td>Normalization</td><td>LayerNorm (Post-Norm)</td><td>RMSNorm (Pre-Norm)</td></tr>
+  <tr><td>FFN activation</td><td>ReLU</td><td>SwiGLU</td></tr>
+  <tr><td>FFN hidden dim</td><td>4 * d_model</td><td>(2/3) * 4 * d_model</td></tr>
+  <tr><td>Linear bias</td><td>Yes</td><td>No</td></tr>
+  <tr><td>Position encoding</td><td>Absolute sinusoidal</td><td>RoPE</td></tr>
+</table>
+
+<hr>
+
+<h2 id="how-to-run">How to Run</h2>
+
+<pre><code>pytest 01-foundations/04_transformer_block/tests.py -v</code></pre>
+
+<hr>
+
+<h2 id="exercises">Exercises</h2>
+
+<ol>
+  <li><code>RMSNorm.forward</code> &mdash; Implement RMS normalization: compute RMS, divide, scale by weight</li>
+  <li><code>SwiGLU.forward</code> &mdash; Implement the gated FFN: SiLU gate times linear value, then project</li>
+  <li><code>TransformerBlock.forward</code> &mdash; Wire up the Pre-Norm residual structure</li>
+</ol>
+
+<h3>Tips</h3>
+
+<ul>
+  <li>Start with RMSNorm. The formula is simple: <code>x / sqrt(mean(x^2) + eps) * weight</code>. Use <code>keepdim=True</code> when computing the mean so it broadcasts correctly.</li>
+  <li>For SwiGLU, the key insight is that there are two parallel paths: the gate (<code>W_gate</code>) and the value (<code>W1</code>). They are combined with element-wise multiplication after applying SiLU to the gate.</li>
+  <li>For TransformerBlock, each sub-layer follows the same pattern: normalize, transform, add residual. Two lines of code.</li>
+</ul>
+
+<hr>
+
+<h2 id="takeaways">Key Takeaways</h2>
+
+<div class="key-point">
+<ol>
+  <li><strong>RMSNorm is simpler and equally effective.</strong> By dropping mean subtraction, it saves computation without sacrificing quality.</li>
+  <li><strong>SwiGLU replaces ReLU with a gated mechanism.</strong> The SiLU activation on a gate controls how much of a linear projection passes through.</li>
+  <li><strong>Pre-Norm stabilizes training.</strong> By normalizing before each sub-layer, gradients flow more smoothly through the residual connections.</li>
+  <li><strong>Residual connections are essential.</strong> They provide a gradient highway, make optimization easier, and allow the network to start as an identity function.</li>
+  <li><strong>The transformer block is the fundamental building block.</strong> A full LLM is just a stack of these blocks.</li>
+</ol>
+</div>
+
+<hr>
+
+<h2 id="further-reading">Further Reading</h2>
+
+<ul>
+  <li><a href="https://arxiv.org/abs/2302.13971">LLaMA Paper (Touvron et al., 2023)</a> &mdash; Uses RMSNorm, SwiGLU, Pre-Norm, RoPE</li>
+  <li><a href="https://arxiv.org/abs/2204.02311">PaLM Paper (Chowdhery et al., 2022)</a> &mdash; Uses SwiGLU at scale</li>
+  <li><a href="https://arxiv.org/abs/1910.07467">RMSNorm Paper (Zhang & Sennrich, 2019)</a> &mdash; Root Mean Square Layer Normalization</li>
+  <li><a href="https://arxiv.org/abs/2002.05202">GLU Variants Paper (Shazeer, 2020)</a> &mdash; SwiGLU and other gated FFN variants</li>
+  <li><a href="https://arxiv.org/abs/2002.04745">On Layer Normalization in the Transformer (Xiong et al., 2020)</a> &mdash; Analysis of Pre-Norm vs Post-Norm</li>
+  <li><a href="https://arxiv.org/abs/1512.03385">Deep Residual Learning (He et al., 2015)</a> &mdash; Original residual connection paper</li>
+</ul>
+
+</div>
+</body>
+</html>

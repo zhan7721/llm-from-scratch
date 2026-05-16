@@ -1,0 +1,377 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Long Context: RoPE Scaling & YaRN - LLM From Scratch</title>
+<style>
+:root { --bg: #1a1b26; --sidebar-bg: #13141b; --card-bg: #1e2030; --text: #c0caf5; --text-muted: #565f89; --accent: #7aa2f7; --accent2: #bb9af7; --green: #9ece6a; --orange: #ff9e64; --red: #f7768e; --cyan: #7dcfff; --border: #292e42; --code-bg: #15161e; --font: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans SC', sans-serif; --mono: 'SF Mono', 'Fira Code', 'Consolas', monospace; }
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { font-family: var(--font); background: var(--bg); color: var(--text); line-height: 1.8; display: flex; }
+.sidebar { width: 280px; min-height: 100vh; background: var(--sidebar-bg); padding: 2rem 1.5rem; position: fixed; top: 0; left: 0; overflow-y: auto; border-right: 1px solid var(--border); }
+.sidebar h2 { color: var(--accent); font-size: 1.1rem; margin-bottom: 1.5rem; padding-bottom: 0.5rem; border-bottom: 1px solid var(--border); }
+.sidebar a { display: block; color: var(--text-muted); text-decoration: none; padding: 0.4rem 0; font-size: 0.9rem; transition: color 0.2s; }
+.sidebar a:hover { color: var(--accent); }
+.sidebar .chapter-nav { margin-top: 2rem; padding-top: 1rem; border-top: 1px solid var(--border); }
+.sidebar .chapter-nav a { color: var(--green); font-size: 0.85rem; }
+.main { margin-left: 280px; padding: 3rem 4rem; max-width: 900px; width: 100%; }
+h1 { font-size: 2.2rem; color: var(--accent); margin-bottom: 0.5rem; }
+.subtitle { color: var(--text-muted); font-size: 1rem; margin-bottom: 2rem; }
+h2 { font-size: 1.5rem; color: var(--accent2); margin: 2.5rem 0 1rem; padding-bottom: 0.3rem; border-bottom: 1px solid var(--border); }
+h3 { font-size: 1.2rem; color: var(--green); margin: 2rem 0 0.8rem; }
+h4 { font-size: 1.05rem; color: var(--orange); margin: 1.5rem 0 0.5rem; }
+p { margin-bottom: 1rem; }
+blockquote { border-left: 3px solid var(--accent); padding: 0.8rem 1.2rem; margin: 1.2rem 0; background: var(--card-bg); border-radius: 0 8px 8px 0; font-style: italic; }
+pre { background: var(--code-bg); border: 1px solid var(--border); border-radius: 8px; padding: 1.2rem; overflow-x: auto; margin: 1rem 0 1.5rem; font-size: 0.9rem; }
+code { font-family: var(--mono); }
+p code, li code { background: var(--code-bg); padding: 0.15rem 0.4rem; border-radius: 4px; font-size: 0.85em; color: var(--cyan); }
+table { width: 100%; border-collapse: collapse; margin: 1rem 0 1.5rem; }
+th { background: var(--card-bg); color: var(--accent); text-align: left; padding: 0.6rem 1rem; border: 1px solid var(--border); }
+td { padding: 0.6rem 1rem; border: 1px solid var(--border); }
+ul, ol { margin: 0.5rem 0 1.2rem 1.5rem; }
+li { margin-bottom: 0.3rem; }
+hr { border: none; border-top: 1px solid var(--border); margin: 2rem 0; }
+strong { color: var(--accent); }
+.diagram-container { background: var(--card-bg); border-radius: 12px; padding: 2rem; margin: 1.5rem 0; text-align: center; border: 1px solid var(--border); }
+.diagram-container svg { max-width: 100%; }
+.key-point { background: linear-gradient(135deg, var(--card-bg), #1a2332); border-radius: 8px; padding: 1rem 1.2rem; margin: 1rem 0; border: 1px solid var(--accent); }
+.step-box { background: var(--card-bg); border-radius: 8px; padding: 1rem 1.2rem; margin: 0.8rem 0; border-left: 3px solid var(--green); }
+.step-box .step-num { color: var(--green); font-weight: bold; }
+.warning-box { background: var(--card-bg); border-radius: 8px; padding: 1rem 1.2rem; margin: 1rem 0; border-left: 3px solid var(--red); }
+.warning-box .warning-title { color: var(--red); font-weight: bold; }
+a { color: var(--accent); text-decoration: none; }
+a:hover { text-decoration: underline; }
+@media (max-width: 900px) { .sidebar { display: none; } .main { margin-left: 0; padding: 2rem 1.5rem; } }
+</style>
+</head>
+<body>
+<nav class="sidebar">
+  <h2>Long Context</h2>
+  <a href="#the-problem">The Problem</a>
+  <a href="#rope-review">RoPE Review</a>
+  <a href="#linear-scaling">Position Interpolation</a>
+  <a href="#ntk-aware">NTK-Aware Scaling</a>
+  <a href="#yarn">YaRN</a>
+  <a href="#comparison">Comparison</a>
+  <a href="#code-walkthrough">Code Walkthrough</a>
+  <a href="#practical-tips">Practical Tips</a>
+  <a href="#common-pitfalls">Common Pitfalls</a>
+  <a href="#takeaways">Key Takeaways</a>
+  <a href="#references">References</a>
+  <div class="chapter-nav">
+    <a href="../07_kv_cache/tutorial.html">&larr; 07 KV Cache</a>
+  </div>
+</nav>
+
+<div class="main">
+<h1>Long Context: RoPE Scaling and YaRN</h1>
+<p class="subtitle">Module 01 &mdash; Foundations, Chapter 08</p>
+
+<h2 id="the-problem">The Problem: Fixed Context Length</h2>
+
+<p>Most large language models are trained with a <strong>fixed context length</strong> &mdash; for example, LLaMA 2 was trained on 4096 tokens, and GPT-4 on 8192 or 32K tokens. This means:</p>
+
+<ul>
+  <li>The model has never "seen" positions beyond its training length</li>
+  <li>Attention patterns at unseen positions become unpredictable</li>
+  <li>Naively extending the sequence length leads to severe quality degradation</li>
+</ul>
+
+<p>But what if we need to process a 50-page document, or maintain a long conversation? We need techniques to <strong>extend the context window</strong> without retraining the model from scratch.</p>
+
+<hr>
+
+<h2 id="rope-review">Background: Rotary Position Embeddings (RoPE)</h2>
+
+<p>Before understanding context extension, let's review how RoPE works (covered in Chapter 02).</p>
+
+<p>RoPE encodes position information by <strong>rotating</strong> query and key vectors in attention. For a position <code>m</code> and dimension pair <code>i</code>, the rotation angle is:</p>
+
+<pre><code>theta_i = m * base^(-2i/d_model)</code></pre>
+
+<p>where <code>base</code> is typically 10000. The rotation is applied as:</p>
+
+<pre><code>[q_2i, q_2i+1] -> [q_2i * cos(m*theta_i) - q_2i+1 * sin(m*theta_i),
+                     q_2i * sin(m*theta_i) + q_2i+1 * cos(m*theta_i)]</code></pre>
+
+<p>The key insight: <strong>each dimension pair rotates at a different frequency</strong>. Low dimensions rotate fast (encoding local context), while high dimensions rotate slowly (encoding global position).</p>
+
+<div class="diagram-container">
+<svg width="650" height="180" viewBox="0 0 650 180">
+  <text x="325" y="20" text-anchor="middle" fill="#c0caf5" font-size="13" font-weight="bold">RoPE Frequency Spectrum</text>
+  <!-- Frequency bars -->
+  <rect x="50" y="50" width="40" height="120" rx="4" fill="#f7768e" opacity="0.7" stroke="#f7768e"/>
+  <text x="70" y="185" text-anchor="middle" fill="#565f89" font-size="9">Dim 0</text>
+  <rect x="100" y="60" width="40" height="110" rx="4" fill="#ff9e64" opacity="0.7" stroke="#ff9e64"/>
+  <text x="120" y="185" text-anchor="middle" fill="#565f89" font-size="9">Dim 2</text>
+  <rect x="150" y="75" width="40" height="95" rx="4" fill="#9ece6a" opacity="0.7" stroke="#9ece6a"/>
+  <text x="170" y="185" text-anchor="middle" fill="#565f89" font-size="9">Dim 4</text>
+  <rect x="200" y="90" width="40" height="80" rx="4" fill="#7dcfff" opacity="0.7" stroke="#7dcfff"/>
+  <text x="220" y="185" text-anchor="middle" fill="#565f89" font-size="9">Dim 8</text>
+  <rect x="250" y="105" width="40" height="65" rx="4" fill="#7aa2f7" opacity="0.7" stroke="#7aa2f7"/>
+  <text x="270" y="185" text-anchor="middle" fill="#565f89" font-size="9">Dim 16</text>
+  <rect x="300" y="120" width="40" height="50" rx="4" fill="#bb9af7" opacity="0.7" stroke="#bb9af7"/>
+  <text x="320" y="185" text-anchor="middle" fill="#565f89" font-size="9">Dim 32</text>
+  <rect x="500" y="145" width="40" height="25" rx="4" fill="#565f89" opacity="0.7" stroke="#565f89"/>
+  <text x="520" y="185" text-anchor="middle" fill="#565f89" font-size="9">Dim 62</text>
+  <text x="120" y="45" text-anchor="middle" fill="#f7768e" font-size="10">High freq (local)</text>
+  <text x="520" y="140" text-anchor="middle" fill="#565f89" font-size="10">Low freq (global)</text>
+  <text x="325" y="170" text-anchor="middle" fill="#c0caf5" font-size="11">Taller bars = faster rotation = encode local context</text>
+</svg>
+</div>
+
+<hr>
+
+<h2 id="linear-scaling">Approach 1: Position Interpolation (Linear Scaling)</h2>
+
+<h3>How It Works</h3>
+
+<p>If the model was trained on positions <code>[0, 4096)</code> and we want to handle positions up to 8192, we divide all positions by 2:</p>
+
+<pre><code>position_scaled = position / scale_factor</code></pre>
+
+<p>For scale_factor = 2.0:</p>
+<ul>
+  <li>Original position 0 -> scaled 0.0</li>
+  <li>Original position 4096 -> scaled 2048.0</li>
+  <li>Original position 8192 -> scaled 4096.0</li>
+</ul>
+
+<div class="diagram-container">
+<svg width="600" height="140" viewBox="0 0 600 140">
+  <text x="300" y="20" text-anchor="middle" fill="#c0caf5" font-size="13" font-weight="bold">Linear Position Scaling</text>
+  <line x1="50" y1="50" x2="550" y2="50" stroke="#565f89" stroke-width="1"/>
+  <text x="50" y="45" fill="#565f89" font-size="10">0</text>
+  <text x="250" y="45" fill="#565f89" font-size="10">2048</text>
+  <text x="450" y="45" fill="#565f89" font-size="10">4096</text>
+  <text x="550" y="45" fill="#7aa2f7" font-size="10">Original</text>
+  <line x1="50" y1="90" x2="550" y2="90" stroke="#565f89" stroke-width="1"/>
+  <text x="50" y="85" fill="#565f89" font-size="10">0</text>
+  <text x="250" y="85" fill="#9ece6a" font-size="10">4096</text>
+  <text x="450" y="85" fill="#9ece6a" font-size="10">8192</text>
+  <text x="550" y="85" fill="#9ece6a" font-size="10">Extended</text>
+  <text x="300" y="130" text-anchor="middle" fill="#565f89" font-size="11">Position 8192 maps to same encoding as position 4096 during training.</text>
+</svg>
+</div>
+
+<h3>Implementation</h3>
+
+<pre><code>class ScaledRoPE(nn.Module):
+    def __init__(self, d_model, base=10000.0, scale_factor=1.0):
+        super().__init__()
+        self.scale_factor = scale_factor
+        inv_freq = 1.0 / (base ** (torch.arange(0, d_model, 2).float() / d_model))
+        self.register_buffer("inv_freq", inv_freq)
+
+    def forward(self, x):
+        seq_len = x.shape[1]
+        t = torch.arange(seq_len, device=x.device) / self.scale_factor
+        freqs = torch.outer(t, self.inv_freq)
+        emb = torch.cat([freqs, freqs], dim=-1)
+        cos, sin = emb.cos().unsqueeze(0), emb.sin().unsqueeze(0)
+        return x * cos + self._rotate_half(x) * sin</code></pre>
+
+<h3>Trade-offs</h3>
+
+<p><strong>Pros:</strong> Simple to implement, works well for moderate extensions (2x-4x), used in LLaMA 2 Long.</p>
+<p><strong>Cons:</strong> Compresses ALL frequencies equally, including high-frequency ones that encode local context. May lose fine-grained position discrimination for nearby tokens.</p>
+
+<hr>
+
+<h2 id="ntk-aware">Approach 2: NTK-Aware Scaling</h2>
+
+<p>Instead of scaling positions, NTK-aware scaling <strong>adjusts the base frequency</strong>. This preserves high-frequency components while extending the low-frequency range.</p>
+
+<h3>The Insight</h3>
+
+<p>Linear scaling compresses everything. But we only need to extend the <strong>low-frequency</strong> dimensions (global position). The high-frequency dimensions (local context) should stay the same!</p>
+
+<h3>The Formula</h3>
+
+<pre><code>base_scaled = base * (scale_factor ^ (d_model / (d_model - 2)))</code></pre>
+
+<p>This has the effect of:</p>
+<ul>
+  <li>Leaving high-frequency dimensions mostly unchanged</li>
+  <li>Extending low-frequency dimensions proportionally to the scale factor</li>
+</ul>
+
+<hr>
+
+<h2 id="yarn">Approach 3: YaRN (Yet another RoPE extensioN)</h2>
+
+<p>YaRN combines NTK-aware scaling with <strong>attention temperature scaling</strong> for even better results.</p>
+
+<h3>Components</h3>
+
+<ol>
+  <li><strong>NTK-aware scaling</strong>: Adjusts the base frequency</li>
+  <li><strong>Attention temperature</strong>: Scales down attention logits to compensate for the changed frequency distribution</li>
+</ol>
+
+<pre><code># Attention temperature factor
+attn_factor = 1 / sqrt(scale_factor)</code></pre>
+
+<h3>Why Temperature Scaling?</h3>
+
+<p>After NTK-aware scaling, the frequency distribution changes. The attention scores (dot products of Q and K) can become too large, leading to overconfident attention patterns. The temperature factor brings them back to a reasonable range.</p>
+
+<h3>Implementation</h3>
+
+<pre><code>class YaRNRope(nn.Module):
+    def __init__(self, d_model, base=10000.0, scale_factor=4.0):
+        super().__init__()
+        # NTK-aware base scaling
+        base_scaled = base * (scale_factor ** (d_model / (d_model - 2)))
+        inv_freq = 1.0 / (base_scaled ** (torch.arange(0, d_model, 2).float() / d_model))
+        self.register_buffer("inv_freq", inv_freq)
+
+        # Attention temperature
+        self.attn_factor = 1.0 / math.sqrt(scale_factor)
+
+    def forward(self, x):
+        seq_len = x.shape[1]
+        t = torch.arange(seq_len, device=x.device, dtype=self.inv_freq.dtype)
+        freqs = torch.outer(t, self.inv_freq)
+        emb = torch.cat([freqs, freqs], dim=-1)
+        cos, sin = emb.cos().unsqueeze(0), emb.sin().unsqueeze(0)
+        # Apply rotation AND temperature scaling
+        return (x * cos + self._rotate_half(x) * sin) * self.attn_factor</code></pre>
+
+<hr>
+
+<h2 id="comparison">Linear Scaling vs YaRN: When to Use Which</h2>
+
+<table>
+  <tr><th>Feature</th><th>Linear Scaling</th><th>YaRN</th></tr>
+  <tr><td><strong>Complexity</strong></td><td>Simple</td><td>Moderate</td></tr>
+  <tr><td><strong>Extension factor</strong></td><td>2x-4x</td><td>4x-16x+</td></tr>
+  <tr><td><strong>Local context preservation</strong></td><td>Poor</td><td>Good</td></tr>
+  <tr><td><strong>Fine-tuning required</strong></td><td>Yes (more)</td><td>Yes (less)</td></tr>
+  <tr><td><strong>Implementation</strong></td><td>Scale positions</td><td>Scale base + temperature</td></tr>
+</table>
+
+<p><strong>Use Linear Scaling when:</strong> You need a quick extension (2x), you plan to fine-tune extensively, simplicity is preferred.</p>
+<p><strong>Use YaRN when:</strong> You need larger extensions (4x+), you want to preserve local context quality, you have limited fine-tuning budget.</p>
+
+<hr>
+
+<h2 id="code-walkthrough">Code Walkthrough</h2>
+
+<h3>Step 1: Understanding the Frequency Spectrum</h3>
+
+<pre><code>d_model = 64
+base = 10000.0
+inv_freq = 1.0 / (base ** (torch.arange(0, d_model, 2).float() / d_model))
+print(f"Frequency range: {inv_freq[-1]:.6f} to {inv_freq[0]:.6f}")
+# Output: Frequency range: 0.000100 to 1.000000
+# Low index = high frequency (fast rotation)
+# High index = low frequency (slow rotation)</code></pre>
+
+<h3>Step 2: Apply Linear Scaling</h3>
+
+<pre><code>rope = ScaledRoPE(d_model=64, scale_factor=2.0)
+x = torch.randn(1, 100, 64)  # 100 tokens
+out = rope(x)  # Positions are halved: 0, 0.5, 1.0, ..., 49.5</code></pre>
+
+<h3>Step 3: Apply YaRN</h3>
+
+<pre><code>yarn = YaRNRope(d_model=64, scale_factor=4.0)
+x = torch.randn(1, 400, 64)  # 400 tokens
+out = yarn(x)  # NTK-aware scaling + temperature</code></pre>
+
+<h3>Step 4: Comparing Outputs</h3>
+
+<pre><code>x = torch.randn(1, 50, 64)
+rope_std = ScaledRoPE(d_model=64, scale_factor=1.0)  # Standard RoPE
+rope_scaled = ScaledRoPE(d_model=64, scale_factor=2.0)
+yarn = YaRNRope(d_model=64, scale_factor=4.0)
+
+out_std = rope_std(x)
+out_scaled = rope_scaled(x)
+out_yarn = yarn(x)
+
+print(f"Standard vs Scaled: {(out_std - out_scaled).abs().mean():.4f}")
+print(f"Standard vs YaRN:   {(out_std - out_yarn).abs().mean():.4f}")</code></pre>
+
+<hr>
+
+<h2 id="practical-tips">Practical Tips</h2>
+
+<h3>1. Fine-tuning After Scaling</h3>
+
+<p>Context extension techniques work best with some fine-tuning:</p>
+
+<pre><code>model = load_pretrained_model("llama-2-7b")
+model.rope = YaRNRope(d_model=4096, scale_factor=4.0)
+
+for batch in long_sequence_dataloader:
+    loss = model(batch)
+    loss.backward()
+    optimizer.step()</code></pre>
+
+<h3>2. Progressive Extension</h3>
+
+<p>For very large extensions (e.g., 4K -> 128K), consider progressive steps:</p>
+
+<pre><code>4K -> 16K (4x) -> 64K (4x) -> 128K (2x)</code></pre>
+
+<p>Each step requires less fine-tuning than a single large jump.</p>
+
+<h3>3. Evaluation</h3>
+
+<ul>
+  <li><strong>Perplexity</strong> at various sequence lengths</li>
+  <li><strong>Retrieval tasks</strong>: Can the model find information at position 50K?</li>
+  <li><strong>Generation quality</strong>: Does long-context generation remain coherent?</li>
+</ul>
+
+<h3>4. Memory Considerations</h3>
+
+<pre><code>Memory = 2 * n_layers * n_heads * seq_len * d_k * sizeof(float16)</code></pre>
+
+<p>For a 70B model at 128K context, this can be 40+ GB.</p>
+
+<hr>
+
+<h2 id="common-pitfalls">Common Pitfalls</h2>
+
+<div class="warning-box">
+<span class="warning-title">Common Mistakes:</span>
+<ol>
+  <li><strong>Scaling too aggressively</strong>: Going from 4K to 256K without fine-tuning will produce garbage</li>
+  <li><strong>Ignoring the attention temperature</strong>: YaRN without temperature scaling may produce overconfident attention</li>
+  <li><strong>Not evaluating properly</strong>: Perplexity alone doesn't capture retrieval quality</li>
+  <li><strong>Forgetting about KV cache memory</strong>: Long context needs proportional memory</li>
+</ol>
+</div>
+
+<hr>
+
+<h2 id="takeaways">Key Takeaways</h2>
+
+<div class="key-point">
+<ol>
+  <li><strong>Context extension is essential</strong> for practical LLM applications</li>
+  <li><strong>Linear scaling</strong> is simple but loses local context quality</li>
+  <li><strong>NTK-aware scaling</strong> preserves high frequencies by adjusting the base</li>
+  <li><strong>YaRN</strong> combines NTK scaling with attention temperature for best results</li>
+  <li><strong>Fine-tuning</strong> is almost always needed after context extension</li>
+  <li><strong>Progressive extension</strong> is better than large jumps</li>
+</ol>
+</div>
+
+<hr>
+
+<h2 id="references">References</h2>
+
+<ul>
+  <li><a href="https://arxiv.org/abs/2306.15595">Extending Context Window of Large Language Models via Positional Interpolation</a> &mdash; Position Interpolation</li>
+  <li><a href="https://arxiv.org/abs/2309.00071">YaRN: Efficient Context Window Extension of Large Language Models</a> &mdash; YaRN</li>
+  <li><a href="https://arxiv.org/abs/2104.09864">RoFormer: Enhanced Transformer with Rotary Position Embedding</a> &mdash; Original RoPE</li>
+  <li><a href="https://arxiv.org/abs/2307.09288">LLaMA 2 Long</a> &mdash; Scaled RoPE in practice</li>
+</ul>
+
+</div>
+</body>
+</html>

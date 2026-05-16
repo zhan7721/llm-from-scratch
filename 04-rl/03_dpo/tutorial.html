@@ -1,0 +1,483 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Direct Preference Optimization (DPO) - LLM From Scratch</title>
+<style>
+:root {
+  --bg: #0f1117;
+  --bg-card: #161b22;
+  --bg-sidebar: #0d1117;
+  --bg-code: #1a1e28;
+  --text: #e6edf3;
+  --text-muted: #8b949e;
+  --text-dim: #6e7681;
+  --accent: #58a6ff;
+  --accent-green: #3fb950;
+  --accent-orange: #d29922;
+  --accent-red: #f85149;
+  --accent-purple: #bc8cff;
+  --border: #21262d;
+  --border-light: #30363d;
+  --sidebar-w: 280px;
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  line-height: 1.7;
+  font-size: 15px;
+}
+
+.layout {
+  display: flex;
+  min-height: 100vh;
+}
+
+/* Sidebar */
+.sidebar {
+  width: var(--sidebar-w);
+  background: var(--bg-sidebar);
+  border-right: 1px solid var(--border);
+  position: fixed;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  overflow-y: auto;
+  z-index: 100;
+  padding: 20px 0;
+}
+
+.sidebar-header {
+  padding: 10px 20px 20px;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 10px;
+}
+
+.sidebar-header .module-tag {
+  display: inline-block;
+  background: var(--accent);
+  color: #000;
+  font-size: 10px;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 10px;
+  margin-bottom: 8px;
+  letter-spacing: 0.5px;
+}
+
+.sidebar-header h2 {
+  font-size: 16px;
+  color: var(--text);
+  font-weight: 600;
+  line-height: 1.3;
+}
+
+.sidebar-header .chapter-num {
+  color: var(--accent);
+  font-size: 12px;
+  font-weight: 500;
+  margin-bottom: 4px;
+}
+
+.toc-item {
+  display: block;
+  padding: 6px 20px;
+  color: var(--text-muted);
+  text-decoration: none;
+  font-size: 13px;
+  transition: all 0.15s;
+  border-left: 3px solid transparent;
+}
+
+.toc-item:hover {
+  color: var(--text);
+  background: rgba(88, 166, 255, 0.06);
+  border-left-color: var(--accent);
+}
+
+.toc-sub {
+  padding-left: 36px;
+  font-size: 12px;
+}
+
+/* Main content */
+.main {
+  margin-left: var(--sidebar-w);
+  flex: 1;
+  padding: 40px 60px;
+  max-width: 900px;
+}
+
+.main h2 {
+  font-size: 24px;
+  color: var(--text);
+  margin-top: 40px;
+  margin-bottom: 16px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--border);
+  scroll-margin-top: 20px;
+}
+
+.main h3 {
+  font-size: 18px;
+  color: var(--accent);
+  margin-top: 30px;
+  margin-bottom: 12px;
+  scroll-margin-top: 20px;
+}
+
+.main p {
+  margin-bottom: 14px;
+  color: var(--text);
+}
+
+.main blockquote {
+  border-left: 4px solid var(--accent);
+  padding: 12px 20px;
+  margin: 16px 0;
+  background: rgba(88, 166, 255, 0.06);
+  border-radius: 0 6px 6px 0;
+  color: var(--text-muted);
+  font-size: 14px;
+}
+
+.main hr {
+  border: none;
+  border-top: 1px solid var(--border);
+  margin: 30px 0;
+}
+
+.main a {
+  color: var(--accent);
+  text-decoration: none;
+}
+
+.main a:hover {
+  text-decoration: underline;
+}
+
+.main strong {
+  color: var(--text);
+  font-weight: 600;
+}
+
+.main code {
+  font-family: 'SF Mono', 'Fira Code', 'Cascadia Code', 'Consolas', monospace;
+  background: var(--bg-code);
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 13px;
+  color: var(--accent-orange);
+}
+
+.main pre {
+  background: var(--bg-code);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 16px 20px;
+  overflow-x: auto;
+  margin: 16px 0;
+  line-height: 1.5;
+}
+
+.main pre code {
+  background: none;
+  padding: 0;
+  color: var(--text);
+  font-size: 13px;
+  display: block;
+  white-space: pre;
+}
+
+/* Tables */
+.table-wrapper {
+  overflow-x: auto;
+  margin: 16px 0;
+}
+
+.main table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+
+.main table th {
+  background: var(--bg-code);
+  color: var(--accent);
+  text-align: left;
+  padding: 10px 14px;
+  border: 1px solid var(--border);
+  font-weight: 600;
+  font-size: 13px;
+}
+
+.main table td {
+  padding: 8px 14px;
+  border: 1px solid var(--border);
+  color: var(--text);
+}
+
+.main table tr:hover td {
+  background: rgba(88, 166, 255, 0.04);
+}
+
+/* SVG Diagrams */
+.diagram {
+  display: block;
+  max-width: 100%;
+  margin: 20px 0;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 15px;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  .sidebar {
+    display: none;
+  }
+  .main {
+    margin-left: 0;
+    padding: 20px;
+  }
+}
+
+/* Syntax highlighting hints */
+.main pre code .comment { color: #6a737d; }
+.main pre code .keyword { color: #ff7b72; }
+.main pre code .string { color: #a5d6ff; }
+.main pre code .number { color: #79c0ff; }
+</style>
+</head>
+<body>
+<div class="layout">
+  <nav class="sidebar">
+    <div class="sidebar-header">
+      <div class="module-tag">MODULE 04 - RL</div>
+      <div class="chapter-num">Chapter 03</div>
+      <h2>Direct Preference Optimization (DPO)</h2>
+    </div>
+    <a href="#section-1" class="toc-item ">Prerequisites</a>
+<a href="#section-2" class="toc-item ">Files</a>
+<a href="#section-3" class="toc-item ">What is DPO?</a>
+<a href="#section-4" class="toc-item toc-sub">The Problem with PPO-based RLHF</a>
+<a href="#section-5" class="toc-item toc-sub">DPO's Solution: Your LM is a Reward Model</a>
+<a href="#section-6" class="toc-item toc-sub">Why This Works</a>
+<a href="#section-7" class="toc-item ">Architecture</a>
+<a href="#section-8" class="toc-item toc-sub">compute_log_probs</a>
+<a href="#section-9" class="toc-item toc-sub">DPOLoss</a>
+<a href="#section-10" class="toc-item toc-sub">DPODataset</a>
+<a href="#section-11" class="toc-item toc-sub">DPOTrainer</a>
+<a href="#section-12" class="toc-item ">Code Walkthrough</a>
+<a href="#section-13" class="toc-item toc-sub">Step 1: compute_log_probs</a>
+<a href="#section-14" class="toc-item toc-sub">Step 2: DPOLoss</a>
+<a href="#section-15" class="toc-item toc-sub">Step 3: DPODataset</a>
+<a href="#section-16" class="toc-item toc-sub">Step 4: DPOTrainer</a>
+<a href="#section-17" class="toc-item ">Training Tips</a>
+<a href="#section-18" class="toc-item toc-sub">Hyperparameters</a>
+<a href="#section-19" class="toc-item toc-sub">Common Pitfalls</a>
+<a href="#section-20" class="toc-item ">How to Run</a>
+<a href="#section-21" class="toc-item toc-sub">Run Tests</a>
+<a href="#section-22" class="toc-item toc-sub">Run Exercises</a>
+<a href="#section-23" class="toc-item ">Exercises</a>
+<a href="#section-24" class="toc-item toc-sub">Exercise Order</a>
+<a href="#section-25" class="toc-item toc-sub">Tips</a>
+<a href="#section-26" class="toc-item ">Key Takeaways</a>
+<a href="#section-27" class="toc-item ">Further Reading</a>
+
+  </nav>
+  <main class="main">
+    
+<svg viewBox="0 0 700 200" xmlns="http://www.w3.org/2000/svg" class="diagram">
+  <defs>
+    <marker id="arrowhead-dpo" markerWidth="10" markerHeight="7" refX="10" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#64b5f6"/>
+    </marker>
+  </defs>
+  <text x="350" y="20" text-anchor="middle" fill="#e0e0e0" font-size="14" font-weight="bold">DPO vs PPO: Simplified Pipeline</text>
+  <rect x="30" y="40" width="300" height="70" rx="6" fill="#37474f" stroke="#78909c" stroke-width="1.5"/>
+  <text x="180" y="60" text-anchor="middle" fill="#b0bec5" font-size="12" font-weight="bold">PPO (Complex)</text>
+  <text x="180" y="80" text-anchor="middle" fill="#cfd8dc" font-size="11">Reward Model + Reference Model + Policy + Value Network</text>
+  <text x="180" y="98" text-anchor="middle" fill="#ff8a65" font-size="11">Rollouts + GAE + Multiple PPO Epochs</text>
+  <rect x="30" y="120" width="300" height="65" rx="6" fill="#1b5e20" stroke="#66bb6a" stroke-width="1.5"/>
+  <text x="180" y="143" text-anchor="middle" fill="#a5d6a7" font-size="12" font-weight="bold">DPO (Simple)</text>
+  <text x="180" y="163" text-anchor="middle" fill="#c8e6c9" font-size="11">Policy + Reference Model only</text>
+  <text x="180" y="180" text-anchor="middle" fill="#81c784" font-size="11">Direct supervised loss on preference pairs</text>
+  <line x1="330" y1="150" x2="390" y2="100" stroke="#64b5f6" stroke-width="2" marker-end="url(#arrowhead-dpo)"/>
+  <rect x="390" y="40" width="290" height="145" rx="6" fill="#0d47a1" stroke="#42a5f5" stroke-width="1.5"/>
+  <text x="535" y="62" text-anchor="middle" fill="#e3f2fd" font-size="12" font-weight="bold">DPO Loss Formula</text>
+  <text x="535" y="85" text-anchor="middle" fill="#90caf9" font-size="11">r(x,y) = beta * (log pi(y|x) - log pi_ref(y|x))</text>
+  <text x="535" y="110" text-anchor="middle" fill="#bbdefb" font-size="11">L = -log sigmoid(</text>
+  <text x="535" y="128" text-anchor="middle" fill="#bbdefb" font-size="11">  beta * (log pi(y_w) - log pi_ref(y_w)</text>
+  <text x="535" y="146" text-anchor="middle" fill="#bbdefb" font-size="11">  - log pi(y_l) + log pi_ref(y_l)))</text>
+  <text x="535" y="172" text-anchor="middle" fill="#81c784" font-size="11">No reward model, no RL needed!</text>
+</svg>
+    <blockquote><p>**Module 04 -- Reinforcement Learning, Chapter 03**</p></blockquote>
+<p>DPO is a simpler alternative to PPO-based RLHF. Instead of training a separate reward model and then using RL to optimize the policy, DPO directly optimizes the policy on preference data using a clever reparameterization that eliminates the need for an explicit reward model.</p>
+<p>The key insight: your language model is secretly a reward model. By reparameterizing the optimal policy under a KL constraint, we can express the reward in terms of the policy's own log probabilities, then optimize the policy directly.</p>
+<hr>
+<h2 id="section-1">Prerequisites</h2>
+<p>- Reward model basics (Module 04, Chapter 01) - PyTorch nn.Module, autograd - Understanding of log probabilities and the Bradley-Terry preference model</p>
+<h2 id="section-2">Files</h2>
+<div class="table-wrapper"><table>
+<thead><tr>
+<th>File</th>
+<th>Purpose</th>
+</tr></thead>
+<tbody>
+<tr>
+<td>`dpo.py`</td>
+<td>Core implementation: compute_log_probs, DPOLoss, DPODataset, DPOTrainer</td>
+</tr>
+<tr>
+<td>`exercise.py`</td>
+<td>Fill-in-the-blank exercises to reinforce understanding</td>
+</tr>
+<tr>
+<td>`solution.py`</td>
+<td>Reference solutions for the exercises</td>
+</tr>
+<tr>
+<td>`tests.py`</td>
+<td>pytest tests for correctness</td>
+</tr>
+</tbody></table></div>
+<hr>
+<h2 id="section-3">What is DPO?</h2>
+<h3 id="section-4">The Problem with PPO-based RLHF</h3>
+<p>PPO-based RLHF requires three separate models: 1. A reward model (trained on preference data) 2. A reference model (frozen, for KL penalty) 3. The policy model (being trained with PPO)</p>
+<p>This is complex, unstable, and expensive. The reward model can be gamed, PPO requires careful tuning, and generating rollouts during training is slow.</p>
+<h3 id="section-5">DPO's Solution: Your LM is a Reward Model</h3>
+<p>DPO starts from a key observation: the optimal policy under a KL constraint has a closed-form solution:</p>
+<pre><code>pi*(y|x) = pi_ref(y|x) * exp(r(x,y) / beta) / Z(x)</code></pre>
+<p>Rearranging to solve for the reward:</p>
+<pre><code>r(x,y) = beta * (log pi*(y|x) - log pi_ref(y|x)) + beta * log Z(x)</code></pre>
+<p>The partition function Z(x) cancels out when we plug this into the Bradley-Terry preference model, giving us a loss that directly depends on the policy:</p>
+<pre><code>L_DPO = -log sigmoid(beta * (log pi(y_w|x) - log pi_ref(y_w|x) - log pi(y_l|x) + log pi_ref(y_l|x)))</code></pre>
+<p>No reward model needed. No RL needed. Just supervised learning on preference pairs.</p>
+<h3 id="section-6">Why This Works</h3>
+<p>The implicit reward <code>r(x,y) = beta * (log pi(y|x) - log pi_ref(y|x))</code> measures how much the policy prefers response y compared to the reference model. By training the policy to maximize this implicit reward for chosen responses and minimize it for rejected responses, we directly optimize the policy on human preferences.</p>
+<hr>
+<h2 id="section-7">Architecture</h2>
+<h3 id="section-8">compute_log_probs</h3>
+<pre><code class="language-python">def compute_log_probs(model, input_ids, response_start_idx):
+    logits = model(input_ids)                            # (batch, seq, vocab)
+    log_probs = F.log_softmax(logits, dim=-1)            # (batch, seq, vocab)
+    response_tokens = input_ids[:, response_start_idx:]   # (batch, response_len)
+    # Gather log probs at position t-1 for token at position t
+    token_log_probs = gather(log_probs[:, start-1:end-1], response_tokens)
+    return token_log_probs.sum(dim=-1)                    # (batch,)</code></pre>
+<h3 id="section-9">DPOLoss</h3>
+<pre><code class="language-python">class DPOLoss(nn.Module):
+    def __init__(self, beta=0.1):
+        ...
+
+    def forward(self, policy_chosen, policy_rejected, ref_chosen, ref_rejected):
+        log_ratio_chosen = policy_chosen - ref_chosen
+        log_ratio_rejected = policy_rejected - ref_rejected
+        loss = -logsigmoid(beta * (log_ratio_chosen - log_ratio_rejected))
+        return loss.mean()</code></pre>
+<h3 id="section-10">DPODataset</h3>
+<p>Pre-computes reference log probs during initialization:</p>
+<pre><code class="language-python">dataset = DPODataset(pairs, ref_model)
+# pairs = [{"prompt": [...], "chosen": [...], "rejected": [...]}, ...]
+# Internally computes ref_chosen_log_probs and ref_rejected_log_probs</code></pre>
+<h3 id="section-11">DPOTrainer</h3>
+<p>Simple training loop (no RL complexity):</p>
+<pre><code class="language-python">trainer = DPOTrainer(model, ref_model, beta=0.1)
+metrics = trainer.step(batch)
+# Just: compute policy log probs, compute loss, backward, step</code></pre>
+<hr>
+<h2 id="section-12">Code Walkthrough</h2>
+<h3 id="section-13">Step 1: compute_log_probs</h3>
+<p>The core function that connects a language model to the DPO loss. For autoregressive models, logits at position t predict the token at position t+1:</p>
+<pre><code class="language-python"># logits[:, t-1, :] predicts token at position t
+# So log prob of response token at position t uses logits at position t-1
+log_probs_all = F.log_softmax(logits, dim=-1)
+response_log_probs = log_probs_all[:, start-1:end-1, :].gather(-1, tokens)
+return response_log_probs.sum(dim=-1)</code></pre>
+<h3 id="section-14">Step 2: DPOLoss</h3>
+<p>The elegant DPO loss that eliminates the reward model:</p>
+<pre><code class="language-python"># Implicit reward: r(x,y) = beta * (log pi(y|x) - log pi_ref(y|x))
+# DPO loss: -log sigmoid(r(x, y_w) - r(x, y_l))
+log_ratio_chosen = policy_chosen - ref_chosen
+log_ratio_rejected = policy_rejected - ref_rejected
+loss = -F.logsigmoid(beta * (log_ratio_chosen - log_ratio_rejected))</code></pre>
+<h3 id="section-15">Step 3: DPODataset</h3>
+<p>Pre-computes reference log probs to avoid redundant computation during training:</p>
+<pre><code class="language-python">with torch.no_grad():
+    chosen_lp = compute_log_probs(ref_model, chosen_ids, prompt_len)
+    rejected_lp = compute_log_probs(ref_model, rejected_ids, prompt_len)</code></pre>
+<h3 id="section-16">Step 4: DPOTrainer</h3>
+<p>A simple supervised training loop (no RL complexity):</p>
+<pre><code class="language-python">policy_chosen = compute_log_probs(model, chosen_ids, start_idx)
+policy_rejected = compute_log_probs(model, rejected_ids, start_idx)
+loss = dpo_loss(policy_chosen, policy_rejected, ref_chosen, ref_rejected)
+loss.backward()
+optimizer.step()</code></pre>
+<hr>
+<h2 id="section-17">Training Tips</h2>
+<h3 id="section-18">Hyperparameters</h3>
+<div class="table-wrapper"><table>
+<thead><tr>
+<th>Parameter</th>
+<th>Typical Range</th>
+<th>Description</th>
+</tr></thead>
+<tbody>
+<tr>
+<td>`beta`</td>
+<td>0.1 - 0.5</td>
+<td>Temperature for implicit reward (higher = more conservative)</td>
+</tr>
+<tr>
+<td>`lr`</td>
+<td>1e-7 - 5e-6</td>
+<td>Learning rate (lower than typical supervised fine-tuning)</td>
+</tr>
+<tr>
+<td>`max_grad_norm`</td>
+<td>0.5 - 1.0</td>
+<td>Gradient clipping</td>
+</tr>
+</tbody></table></div>
+<h3 id="section-19">Common Pitfalls</h3>
+<p>1. <strong>Beta too high</strong>: Makes the loss very sensitive to small differences, can cause training instability.</p>
+<p>2. <strong>Beta too low</strong>: The policy won't learn much because the implicit reward differences are compressed.</p>
+<p>3. <strong>Learning rate too high</strong>: DPO is sensitive to learning rates. Start low (5e-7) and increase carefully.</p>
+<p>4. <strong>Prompt/response alignment</strong>: Make sure <code>response_start_idx</code> correctly splits prompt from response. Mismatches lead to nonsensical log probs.</p>
+<hr>
+<h2 id="section-20">How to Run</h2>
+<h3 id="section-21">Run Tests</h3>
+<pre><code class="language-bash">cd /path/to/llm-from-scratch
+pytest 04-rl/03_dpo/tests.py -v</code></pre>
+<h3 id="section-22">Run Exercises</h3>
+<p>Open <code>exercise.py</code> and fill in the <code>TODO</code> sections. Then verify:</p>
+<pre><code class="language-bash">pytest 04-rl/03_dpo/tests.py -v</code></pre>
+<hr>
+<h2 id="section-23">Exercises</h2>
+<p>Open <code>exercise.py</code> to practice implementing DPO components yourself.</p>
+<h3 id="section-24">Exercise Order</h3>
+<p>1. <strong><code>compute_log_probs</code></strong> -- Compute log probabilities of response tokens 2. <strong><code>DPOLoss.forward</code></strong> -- Implement the DPO loss function 3. <strong><code>DPODataset.__init__</code></strong> -- Pre-compute reference log probs 4. <strong><code>DPOTrainer.step</code></strong> -- Implement the training step</p>
+<h3 id="section-25">Tips</h3>
+<p>- Start with <code>compute_log_probs</code>. Remember: logits at position t predict token at position t+1. - For <code>DPOLoss</code>, use <code>F.logsigmoid</code> for numerical stability. - In <code>DPODataset</code>, freeze the reference model and use <code>torch.no_grad()</code> during pre-computation. - In <code>DPOTrainer.step</code>, the flow is: compute policy log probs -> compute loss -> backward -> step.</p>
+<hr>
+<h2 id="section-26">Key Takeaways</h2>
+<p>1. <strong>Your LM is a reward model.</strong> DPO shows that the optimal policy under a KL constraint implicitly defines a reward. No separate reward model is needed.</p>
+<p>2. <strong>DPO is supervised learning.</strong> Unlike PPO which requires RL, DPO is just minimizing a loss on preference pairs. This makes it simpler and more stable.</p>
+<p>3. <strong>The reference model provides the baseline.</strong> The frozen reference model acts as the KL anchor, preventing the policy from diverging too far from the pretrained model.</p>
+<p>4. <strong>Beta controls the tradeoff.</strong> Higher beta makes the implicit reward more sensitive to log prob differences, leading to more aggressive optimization. Lower beta is more conservative.</p>
+<p>5. <strong>Pre-computing saves time.</strong> Since the reference model is frozen, we can pre-compute its log probs once during dataset initialization, avoiding redundant computation during training.</p>
+<hr>
+<h2 id="section-27">Further Reading</h2>
+<p>- <a href="https://arxiv.org/abs/2305.18290">Direct Preference Optimization: Your Language Model is Secretly a Reward Model (Rafailov et al., 2023)</a> -- The original DPO paper - <a href="https://arxiv.org/abs/2203.02155">Training Language Models to Follow Instructions with Human Feedback (Ouyang et al., 2022)</a> -- InstructGPT, the RLHF baseline that DPO simplifies - <a href="https://arxiv.org/abs/2212.08073">Constitutional AI: Harmlessness from AI Feedback (Bai et al., 2022)</a> -- Related work on AI feedback for alignment</p>
+  </main>
+</div>
+</body>
+</html>

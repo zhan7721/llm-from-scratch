@@ -1,0 +1,505 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Group Relative Policy Optimization (GRPO) - LLM From Scratch</title>
+<style>
+:root {
+  --bg: #0f1117;
+  --bg-card: #161b22;
+  --bg-sidebar: #0d1117;
+  --bg-code: #1a1e28;
+  --text: #e6edf3;
+  --text-muted: #8b949e;
+  --text-dim: #6e7681;
+  --accent: #58a6ff;
+  --accent-green: #3fb950;
+  --accent-orange: #d29922;
+  --accent-red: #f85149;
+  --accent-purple: #bc8cff;
+  --border: #21262d;
+  --border-light: #30363d;
+  --sidebar-w: 280px;
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  line-height: 1.7;
+  font-size: 15px;
+}
+
+.layout {
+  display: flex;
+  min-height: 100vh;
+}
+
+/* Sidebar */
+.sidebar {
+  width: var(--sidebar-w);
+  background: var(--bg-sidebar);
+  border-right: 1px solid var(--border);
+  position: fixed;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  overflow-y: auto;
+  z-index: 100;
+  padding: 20px 0;
+}
+
+.sidebar-header {
+  padding: 10px 20px 20px;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 10px;
+}
+
+.sidebar-header .module-tag {
+  display: inline-block;
+  background: var(--accent);
+  color: #000;
+  font-size: 10px;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 10px;
+  margin-bottom: 8px;
+  letter-spacing: 0.5px;
+}
+
+.sidebar-header h2 {
+  font-size: 16px;
+  color: var(--text);
+  font-weight: 600;
+  line-height: 1.3;
+}
+
+.sidebar-header .chapter-num {
+  color: var(--accent);
+  font-size: 12px;
+  font-weight: 500;
+  margin-bottom: 4px;
+}
+
+.toc-item {
+  display: block;
+  padding: 6px 20px;
+  color: var(--text-muted);
+  text-decoration: none;
+  font-size: 13px;
+  transition: all 0.15s;
+  border-left: 3px solid transparent;
+}
+
+.toc-item:hover {
+  color: var(--text);
+  background: rgba(88, 166, 255, 0.06);
+  border-left-color: var(--accent);
+}
+
+.toc-sub {
+  padding-left: 36px;
+  font-size: 12px;
+}
+
+/* Main content */
+.main {
+  margin-left: var(--sidebar-w);
+  flex: 1;
+  padding: 40px 60px;
+  max-width: 900px;
+}
+
+.main h2 {
+  font-size: 24px;
+  color: var(--text);
+  margin-top: 40px;
+  margin-bottom: 16px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--border);
+  scroll-margin-top: 20px;
+}
+
+.main h3 {
+  font-size: 18px;
+  color: var(--accent);
+  margin-top: 30px;
+  margin-bottom: 12px;
+  scroll-margin-top: 20px;
+}
+
+.main p {
+  margin-bottom: 14px;
+  color: var(--text);
+}
+
+.main blockquote {
+  border-left: 4px solid var(--accent);
+  padding: 12px 20px;
+  margin: 16px 0;
+  background: rgba(88, 166, 255, 0.06);
+  border-radius: 0 6px 6px 0;
+  color: var(--text-muted);
+  font-size: 14px;
+}
+
+.main hr {
+  border: none;
+  border-top: 1px solid var(--border);
+  margin: 30px 0;
+}
+
+.main a {
+  color: var(--accent);
+  text-decoration: none;
+}
+
+.main a:hover {
+  text-decoration: underline;
+}
+
+.main strong {
+  color: var(--text);
+  font-weight: 600;
+}
+
+.main code {
+  font-family: 'SF Mono', 'Fira Code', 'Cascadia Code', 'Consolas', monospace;
+  background: var(--bg-code);
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 13px;
+  color: var(--accent-orange);
+}
+
+.main pre {
+  background: var(--bg-code);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 16px 20px;
+  overflow-x: auto;
+  margin: 16px 0;
+  line-height: 1.5;
+}
+
+.main pre code {
+  background: none;
+  padding: 0;
+  color: var(--text);
+  font-size: 13px;
+  display: block;
+  white-space: pre;
+}
+
+/* Tables */
+.table-wrapper {
+  overflow-x: auto;
+  margin: 16px 0;
+}
+
+.main table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+
+.main table th {
+  background: var(--bg-code);
+  color: var(--accent);
+  text-align: left;
+  padding: 10px 14px;
+  border: 1px solid var(--border);
+  font-weight: 600;
+  font-size: 13px;
+}
+
+.main table td {
+  padding: 8px 14px;
+  border: 1px solid var(--border);
+  color: var(--text);
+}
+
+.main table tr:hover td {
+  background: rgba(88, 166, 255, 0.04);
+}
+
+/* SVG Diagrams */
+.diagram {
+  display: block;
+  max-width: 100%;
+  margin: 20px 0;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 15px;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  .sidebar {
+    display: none;
+  }
+  .main {
+    margin-left: 0;
+    padding: 20px;
+  }
+}
+
+/* Syntax highlighting hints */
+.main pre code .comment { color: #6a737d; }
+.main pre code .keyword { color: #ff7b72; }
+.main pre code .string { color: #a5d6ff; }
+.main pre code .number { color: #79c0ff; }
+</style>
+</head>
+<body>
+<div class="layout">
+  <nav class="sidebar">
+    <div class="sidebar-header">
+      <div class="module-tag">MODULE 04 - RL</div>
+      <div class="chapter-num">Chapter 05</div>
+      <h2>Group Relative Policy Optimization (GRPO)</h2>
+    </div>
+    <a href="#section-1" class="toc-item ">Prerequisites</a>
+<a href="#section-2" class="toc-item ">Files</a>
+<a href="#section-3" class="toc-item ">What is GRPO?</a>
+<a href="#section-4" class="toc-item toc-sub">The Problem with PPO for RLHF</a>
+<a href="#section-5" class="toc-item toc-sub">GRPO's Solution: Group-Relative Advantages</a>
+<a href="#section-6" class="toc-item ">Architecture</a>
+<a href="#section-7" class="toc-item toc-sub">compute_group_advantages</a>
+<a href="#section-8" class="toc-item toc-sub">GRPOLoss</a>
+<a href="#section-9" class="toc-item toc-sub">GRPOTrainer</a>
+<a href="#section-10" class="toc-item ">Code Walkthrough</a>
+<a href="#section-11" class="toc-item toc-sub">Step 1: Group Advantages</a>
+<a href="#section-12" class="toc-item toc-sub">Step 2: GRPO Loss</a>
+<a href="#section-13" class="toc-item toc-sub">Step 3: GRPO Training Loop</a>
+<a href="#section-14" class="toc-item ">GRPO vs PPO</a>
+<a href="#section-15" class="toc-item ">Training Tips</a>
+<a href="#section-16" class="toc-item toc-sub">Hyperparameters</a>
+<a href="#section-17" class="toc-item toc-sub">Common Pitfalls</a>
+<a href="#section-18" class="toc-item ">How to Run</a>
+<a href="#section-19" class="toc-item toc-sub">Run Tests</a>
+<a href="#section-20" class="toc-item toc-sub">Run Exercises</a>
+<a href="#section-21" class="toc-item ">Exercises</a>
+<a href="#section-22" class="toc-item toc-sub">Exercise Order</a>
+<a href="#section-23" class="toc-item toc-sub">Tips</a>
+<a href="#section-24" class="toc-item ">Key Takeaways</a>
+<a href="#section-25" class="toc-item ">Further Reading</a>
+
+  </nav>
+  <main class="main">
+    
+<svg viewBox="0 0 700 210" xmlns="http://www.w3.org/2000/svg" class="diagram">
+  <defs>
+    <marker id="arrowhead-grpo" markerWidth="10" markerHeight="7" refX="10" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#64b5f6"/>
+    </marker>
+  </defs>
+  <text x="350" y="20" text-anchor="middle" fill="#e0e0e0" font-size="14" font-weight="bold">GRPO Advantage Computation</text>
+  <rect x="30" y="40" width="130" height="60" rx="6" fill="#1a237e" stroke="#5c6bc0" stroke-width="1.5"/>
+  <text x="95" y="63" text-anchor="middle" fill="#e8eaf6" font-size="12" font-weight="bold">Prompt x</text>
+  <text x="95" y="83" text-anchor="middle" fill="#9fa8da" font-size="10">Generate G responses</text>
+  <line x1="160" y1="70" x2="210" y2="70" stroke="#64b5f6" stroke-width="2" marker-end="url(#arrowhead-grpo)"/>
+  <rect x="210" y="40" width="160" height="60" rx="6" fill="#0d47a1" stroke="#42a5f5" stroke-width="1.5"/>
+  <text x="290" y="63" text-anchor="middle" fill="#e3f2fd" font-size="11" font-weight="bold">y_1, y_2, ..., y_G</text>
+  <text x="290" y="83" text-anchor="middle" fill="#90caf9" font-size="10">r_1, r_2, ..., r_G</text>
+  <line x1="370" y1="70" x2="420" y2="70" stroke="#64b5f6" stroke-width="2" marker-end="url(#arrowhead-grpo)"/>
+  <rect x="420" y="35" width="250" height="70" rx="6" fill="#004d40" stroke="#26a69a" stroke-width="1.5"/>
+  <text x="545" y="58" text-anchor="middle" fill="#e0f2f1" font-size="12" font-weight="bold">Group Advantage</text>
+  <text x="545" y="78" text-anchor="middle" fill="#80cbc4" font-size="11">A_i = (r_i - mean(r)) / (std(r) + eps)</text>
+  <text x="545" y="95" text-anchor="middle" fill="#b2dfdb" font-size="10">Advantages sum to zero within group</text>
+  <rect x="30" y="130" width="300" height="70" rx="6" fill="#4a148c" stroke="#ab47bc" stroke-width="1.5"/>
+  <text x="180" y="153" text-anchor="middle" fill="#e1bee7" font-size="12" font-weight="bold">Key Properties</text>
+  <text x="180" y="173" text-anchor="middle" fill="#ce93d8" font-size="10">No value network needed (vs PPO)</text>
+  <text x="180" y="190" text-anchor="middle" fill="#ce93d8" font-size="10">Same clipped loss as PPO with group advantages</text>
+  <rect x="380" y="130" width="290" height="70" rx="6" fill="#b71c1c" stroke="#ef5350" stroke-width="1.5"/>
+  <text x="525" y="153" text-anchor="middle" fill="#ffcdd2" font-size="12" font-weight="bold">GRPO vs PPO</text>
+  <text x="525" y="173" text-anchor="middle" fill="#ef9a9a" font-size="10">PPO: advantage = GAE(learned V(s))</text>
+  <text x="525" y="190" text-anchor="middle" fill="#ef9a9a" font-size="10">GRPO: advantage = normalize(r within group)</text>
+</svg>
+    <blockquote><p>**Module 04 -- Reinforcement Learning, Chapter 05**</p></blockquote>
+<p>GRPO is a simpler alternative to PPO for RLHF. Instead of training a value network to estimate advantages, GRPO generates multiple responses per prompt and normalizes rewards within each group. This eliminates the need for a value function entirely, making the algorithm simpler and often more stable.</p>
+<p>This chapter implements the core GRPO components: group-relative advantage computation, the clipped surrogate loss, a GRPO trainer, and a convenience function for single training steps.</p>
+<hr>
+<h2 id="section-1">Prerequisites</h2>
+<p>- Reward model basics (Module 04, Chapter 01) - PPO concepts (Module 04, Chapter 02) - PyTorch nn.Module, autograd</p>
+<h2 id="section-2">Files</h2>
+<div class="table-wrapper"><table>
+<thead><tr>
+<th>File</th>
+<th>Purpose</th>
+</tr></thead>
+<tbody>
+<tr>
+<td>`grpo.py`</td>
+<td>Core implementation: compute_group_advantages, GRPOLoss, GRPOTrainer, grpo_step</td>
+</tr>
+<tr>
+<td>`exercise.py`</td>
+<td>Fill-in-the-blank exercises to reinforce understanding</td>
+</tr>
+<tr>
+<td>`solution.py`</td>
+<td>Reference solutions for the exercises</td>
+</tr>
+<tr>
+<td>`tests.py`</td>
+<td>pytest tests for correctness</td>
+</tr>
+</tbody></table></div>
+<hr>
+<h2 id="section-3">What is GRPO?</h2>
+<h3 id="section-4">The Problem with PPO for RLHF</h3>
+<p>PPO requires a value network (critic) to estimate advantages. This adds complexity: - You need to train both a policy and a value network - The value network can be inaccurate, leading to noisy advantage estimates - More parameters, more computation, more hyperparameters to tune</p>
+<h3 id="section-5">GRPO's Solution: Group-Relative Advantages</h3>
+<p>Instead of learning a value function, GRPO generates G responses for each prompt and uses the empirical reward distribution within the group:</p>
+<pre><code>For each prompt:
+    1. Generate G responses: y_1, y_2, ..., y_G
+    2. Score each response: r_1, r_2, ..., r_G
+    3. Compute group advantages:
+       advantage_i = (r_i - mean(r)) / (std(r) + eps)</code></pre>
+<p>Key properties: - Advantages sum to zero within each group (by construction) - Higher-reward responses get positive advantages (reinforced) - Lower-reward responses get negative advantages (discouraged) - No value network needed!</p>
+<hr>
+<h2 id="section-6">Architecture</h2>
+<h3 id="section-7">compute_group_advantages</h3>
+<pre><code class="language-python">def compute_group_advantages(rewards, eps=1e-8):
+    """(num_prompts, G) -&gt; (num_prompts, G)"""
+    mean = rewards.mean(dim=1, keepdim=True)
+    std = rewards.std(dim=1, keepdim=True)
+    return (rewards - mean) / (std + eps)</code></pre>
+<h3 id="section-8">GRPOLoss</h3>
+<pre><code class="language-python">class GRPOLoss(nn.Module):
+    def forward(self, log_probs, old_log_probs, advantages, log_probs_ref):
+        kl = approx_kl_divergence(log_probs, log_probs_ref)
+        ratio = (log_probs - old_log_probs).exp()
+        surr1 = ratio * advantages
+        surr2 = clip(ratio, 1-eps, 1+eps) * advantages
+        loss = -min(surr1, surr2) + kl_weight * kl
+        return loss, kl</code></pre>
+<h3 id="section-9">GRPOTrainer</h3>
+<pre><code class="language-python">trainer = GRPOTrainer(model, ref_model, reward_fn, clip_eps=0.2, kl_weight=0.1)
+metrics = trainer.step(prompts, max_new_tokens=50, vocab_size=32000)</code></pre>
+<hr>
+<h2 id="section-10">Code Walkthrough</h2>
+<h3 id="section-11">Step 1: Group Advantages</h3>
+<p>The core innovation of GRPO. For each prompt with G responses:</p>
+<pre><code class="language-python">rewards = tensor([[r1, r2, r3, r4],   # prompt 1
+                   [r1, r2, r3, r4]])  # prompt 2
+advantages = (rewards - rewards.mean(dim=1, keepdim=True)) / (rewards.std(dim=1, keepdim=True) + eps)
+# Each row sums to zero</code></pre>
+<h3 id="section-12">Step 2: GRPO Loss</h3>
+<p>Same clipped surrogate as PPO, but with group-relative advantages:</p>
+<pre><code class="language-python">ratio = (log_probs - old_log_probs).exp()
+surr1 = ratio * advantages
+surr2 = clip(ratio, 1-eps, 1+eps) * advantages
+loss = -min(surr1, surr2) + kl_weight * KL</code></pre>
+<h3 id="section-13">Step 3: GRPO Training Loop</h3>
+<pre><code class="language-python">for each training step:
+    for each prompt:
+        generate G responses
+        score with reward function
+    compute group advantages
+    update policy with GRPO loss</code></pre>
+<hr>
+<h2 id="section-14">GRPO vs PPO</h2>
+<div class="table-wrapper"><table>
+<thead><tr>
+<th>Aspect</th>
+<th>PPO</th>
+<th>GRPO</th>
+</tr></thead>
+<tbody>
+<tr>
+<td>Value network</td>
+<td>Required</td>
+<td>Not needed</td>
+</tr>
+<tr>
+<td>Advantage estimation</td>
+<td>GAE with learned V(s)</td>
+<td>Reward normalization within group</td>
+</tr>
+<tr>
+<td>Complexity</td>
+<td>Higher (policy + value)</td>
+<td>Lower (policy only)</td>
+</tr>
+<tr>
+<td>Stability</td>
+<td>Can be unstable if V is inaccurate</td>
+<td>More stable (no V estimation error)</td>
+</tr>
+<tr>
+<td>Sample efficiency</td>
+<td>Higher (reuses data with GAE)</td>
+<td>Lower (needs fresh samples each step)</td>
+</tr>
+</tbody></table></div>
+<hr>
+<h2 id="section-15">Training Tips</h2>
+<h3 id="section-16">Hyperparameters</h3>
+<div class="table-wrapper"><table>
+<thead><tr>
+<th>Parameter</th>
+<th>Typical Range</th>
+<th>Description</th>
+</tr></thead>
+<tbody>
+<tr>
+<td>`clip_eps`</td>
+<td>0.1 - 0.3</td>
+<td>Clipping parameter (0.2 is common)</td>
+</tr>
+<tr>
+<td>`kl_weight`</td>
+<td>0.01 - 0.5</td>
+<td>KL penalty weight</td>
+</tr>
+<tr>
+<td>`lr`</td>
+<td>1e-6 - 1e-5</td>
+<td>Learning rate</td>
+</tr>
+<tr>
+<td>`num_responses_per_prompt`</td>
+<td>4 - 16</td>
+<td>Group size G</td>
+</tr>
+</tbody></table></div>
+<h3 id="section-17">Common Pitfalls</h3>
+<p>1. <strong>Small groups</strong>: With G=2, the advantage signal is very coarse. Use G >= 4 for better signal.</p>
+<p>2. <strong>Reward scale</strong>: If rewards have very different scales across prompts, the advantages can be noisy. Consider normalizing rewards across the batch.</p>
+<p>3. <strong>KL divergence explosion</strong>: Same as PPO -- monitor KL and adjust <code>kl_weight</code> if needed.</p>
+<p>4. <strong>Generation cost</strong>: Generating G responses per prompt is expensive. Balance G against batch size.</p>
+<hr>
+<h2 id="section-18">How to Run</h2>
+<h3 id="section-19">Run Tests</h3>
+<pre><code class="language-bash">cd /path/to/llm-from-scratch
+pytest 04-rl/05_grpo/tests.py -v</code></pre>
+<h3 id="section-20">Run Exercises</h3>
+<p>Open <code>exercise.py</code> and fill in the <code>TODO</code> sections. Then verify:</p>
+<pre><code class="language-bash">pytest 04-rl/05_grpo/tests.py -v</code></pre>
+<hr>
+<h2 id="section-21">Exercises</h2>
+<p>Open <code>exercise.py</code> to practice implementing GRPO components yourself.</p>
+<h3 id="section-22">Exercise Order</h3>
+<p>1. <strong><code>compute_group_advantages</code></strong> -- Normalize rewards within a group 2. <strong><code>GRPOLossExercise.forward</code></strong> -- Implement the clipped surrogate objective 3. <strong><code>grpo_step_exercise</code></strong> -- Implement a single GRPO training step</p>
+<h3 id="section-23">Tips</h3>
+<p>- Start with <code>compute_group_advantages</code>. The key formula is: <code>(r - mean) / (std + eps)</code>. - For <code>GRPOLoss</code>, it's identical to PPO's clip loss -- just with group advantages. - For <code>grpo_step</code>, remember to expand 1D advantages to match the sequence dimension. - Use <code>model.train()</code> before computing new log probs, and <code>model.eval()</code> for generation.</p>
+<hr>
+<h2 id="section-24">Key Takeaways</h2>
+<p>1. <strong>GRPO eliminates the value network.</strong> By generating multiple responses and normalizing rewards within the group, GRPO gets advantage estimates without a learned value function. This is simpler and avoids value estimation errors.</p>
+<p>2. <strong>Group advantages sum to zero.</strong> This is by construction: normalizing rewards within a group ensures the advantages are zero-centered. The relative ranking determines the training signal.</p>
+<p>3. <strong>GRPO uses the same clipped loss as PPO.</strong> The only difference is where the advantages come from. The clipping mechanism and KL penalty work the same way.</p>
+<p>4. <strong>Larger groups give better signal.</strong> With more responses per prompt, the advantage estimates are more stable. But this comes at the cost of more generation time.</p>
+<p>5. <strong>GRPO is especially good for math/code tasks.</strong> Where rewards are well-defined (correct/incorrect), group-relative advantages provide a clean training signal without the noise of a learned value function.</p>
+<hr>
+<h2 id="section-25">Further Reading</h2>
+<p>- <a href="https://arxiv.org/abs/2402.03300">DeepSeekMath: Pushing the Limits of Mathematical Reasoning in Open Language Models (Shao et al., 2024)</a> -- The paper that introduced GRPO - <a href="https://arxiv.org/abs/1707.06347">Proximal Policy Optimization Algorithms (Schulman et al., 2017)</a> -- The PPO paper (GRPO builds on PPO's clipped objective) - <a href="https://arxiv.org/abs/2203.02155">Training Language Models to Follow Instructions with Human Feedback (Ouyang et al., 2022)</a> -- InstructGPT, which popularized PPO for RLHF</p>
+  </main>
+</div>
+</body>
+</html>

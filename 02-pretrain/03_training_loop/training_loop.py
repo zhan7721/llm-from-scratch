@@ -196,6 +196,9 @@ def training_step(
         loss = loss / gradient_accumulation_steps
         loss.backward()
 
+    # Track unscaled loss for logging
+    log_loss = loss.item() * gradient_accumulation_steps
+
     # Step optimizer if accumulation is complete
     if (step + 1) % gradient_accumulation_steps == 0:
         if scaler is not None:
@@ -217,7 +220,7 @@ def training_step(
     current_lr = scheduler.get_last_lr()[0]
 
     return {
-        "loss": loss.item() * gradient_accumulation_steps,
+        "loss": log_loss,
         "grad_norm": grad_norm,
         "lr": current_lr,
     }

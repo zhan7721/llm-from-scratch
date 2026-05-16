@@ -1,0 +1,378 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Token Embedding & RoPE - LLM From Scratch</title>
+<style>
+:root {
+  --bg: #1a1b26; --sidebar-bg: #13141b; --card-bg: #1e2030; --text: #c0caf5;
+  --text-muted: #565f89; --accent: #7aa2f7; --accent2: #bb9af7; --green: #9ece6a;
+  --orange: #ff9e64; --red: #f7768e; --cyan: #7dcfff; --border: #292e42;
+  --code-bg: #15161e; --font: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans SC', sans-serif;
+  --mono: 'SF Mono', 'Fira Code', 'Consolas', monospace;
+}
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { font-family: var(--font); background: var(--bg); color: var(--text); line-height: 1.8; display: flex; }
+.sidebar { width: 280px; min-height: 100vh; background: var(--sidebar-bg); padding: 2rem 1.5rem; position: fixed; top: 0; left: 0; overflow-y: auto; border-right: 1px solid var(--border); }
+.sidebar h2 { color: var(--accent); font-size: 1.1rem; margin-bottom: 1.5rem; padding-bottom: 0.5rem; border-bottom: 1px solid var(--border); }
+.sidebar a { display: block; color: var(--text-muted); text-decoration: none; padding: 0.4rem 0; font-size: 0.9rem; transition: color 0.2s; }
+.sidebar a:hover, .sidebar a.active { color: var(--accent); }
+.sidebar .chapter-nav { margin-top: 2rem; padding-top: 1rem; border-top: 1px solid var(--border); }
+.sidebar .chapter-nav a { color: var(--green); font-size: 0.85rem; }
+.main { margin-left: 280px; padding: 3rem 4rem; max-width: 900px; width: 100%; }
+h1 { font-size: 2.2rem; color: var(--accent); margin-bottom: 0.5rem; }
+.subtitle { color: var(--text-muted); font-size: 1rem; margin-bottom: 2rem; }
+h2 { font-size: 1.5rem; color: var(--accent2); margin: 2.5rem 0 1rem; padding-bottom: 0.3rem; border-bottom: 1px solid var(--border); }
+h3 { font-size: 1.2rem; color: var(--green); margin: 2rem 0 0.8rem; }
+h4 { font-size: 1.05rem; color: var(--orange); margin: 1.5rem 0 0.5rem; }
+p { margin-bottom: 1rem; }
+blockquote { border-left: 3px solid var(--accent); padding: 0.8rem 1.2rem; margin: 1.2rem 0; background: var(--card-bg); border-radius: 0 8px 8px 0; font-style: italic; }
+pre { background: var(--code-bg); border: 1px solid var(--border); border-radius: 8px; padding: 1.2rem; overflow-x: auto; margin: 1rem 0 1.5rem; font-size: 0.9rem; }
+code { font-family: var(--mono); }
+p code, li code { background: var(--code-bg); padding: 0.15rem 0.4rem; border-radius: 4px; font-size: 0.85em; color: var(--cyan); }
+table { width: 100%; border-collapse: collapse; margin: 1rem 0 1.5rem; }
+th { background: var(--card-bg); color: var(--accent); text-align: left; padding: 0.6rem 1rem; border: 1px solid var(--border); }
+td { padding: 0.6rem 1rem; border: 1px solid var(--border); }
+ul, ol { margin: 0.5rem 0 1.2rem 1.5rem; }
+li { margin-bottom: 0.3rem; }
+hr { border: none; border-top: 1px solid var(--border); margin: 2rem 0; }
+strong { color: var(--accent); }
+.diagram-container { background: var(--card-bg); border-radius: 12px; padding: 2rem; margin: 1.5rem 0; text-align: center; border: 1px solid var(--border); }
+.diagram-container svg { max-width: 100%; }
+.key-point { background: linear-gradient(135deg, var(--card-bg), #1a2332); border-radius: 8px; padding: 1rem 1.2rem; margin: 1rem 0; border: 1px solid var(--accent); }
+.step-box { background: var(--card-bg); border-radius: 8px; padding: 1rem 1.2rem; margin: 0.8rem 0; border-left: 3px solid var(--green); }
+.step-box .step-num { color: var(--green); font-weight: bold; }
+a { color: var(--accent); text-decoration: none; }
+a:hover { text-decoration: underline; }
+@media (max-width: 900px) { .sidebar { display: none; } .main { margin-left: 0; padding: 2rem 1.5rem; } }
+</style>
+</head>
+<body>
+<nav class="sidebar">
+  <h2>Embedding & RoPE</h2>
+  <a href="#why-embeddings">Why Embeddings?</a>
+  <a href="#token-embedding">Token Embedding</a>
+  <a href="#positional-encoding">Positional Encoding</a>
+  <a href="#rope">Rotary Positional Embedding</a>
+  <a href="#rope-intuition">Intuition: Rotating Vectors</a>
+  <a href="#rope-math">The Mathematics</a>
+  <a href="#rope-code">Code Walkthrough</a>
+  <a href="#how-to-run">How to Run</a>
+  <a href="#exercises">Exercises</a>
+  <a href="#takeaways">Key Takeaways</a>
+  <a href="#further-reading">Further Reading</a>
+  <div class="chapter-nav">
+    <a href="../01_tokenizer/tutorial.html">&larr; 01 Tokenizer</a><br>
+    <a href="../03_attention/tutorial.html">03 Attention &rarr;</a>
+  </div>
+</nav>
+
+<div class="main">
+<h1>Token Embedding and Rotary Positional Embedding (RoPE)</h1>
+<p class="subtitle">Module 01 &mdash; Foundations, Chapter 02</p>
+
+<p>A neural network processes numbers, not tokens. After tokenization converts text into integer IDs, we need a way to represent those IDs as meaningful vectors. <strong>Embeddings</strong> are that bridge. In this chapter we build two fundamental embedding layers from scratch:</p>
+
+<ol>
+  <li><strong>Token Embedding</strong> &mdash; a lookup table that converts token IDs to dense vectors</li>
+  <li><strong>Rotary Positional Embedding (RoPE)</strong> &mdash; a rotation-based method that encodes position information</li>
+</ol>
+
+<p>These are the first two layers in any transformer model. Every token passes through them before reaching the attention layers.</p>
+
+<hr>
+
+<h2 id="why-embeddings">Why Embeddings?</h2>
+
+<p>After tokenization, a sentence like <code>"The cat sat"</code> becomes a sequence of integers:</p>
+
+<pre><code>[464, 3797, 3332]</code></pre>
+
+<p>But neural networks operate on continuous vectors, not discrete integers. We need a function that maps each integer to a vector in a high-dimensional space. This is exactly what an embedding does.</p>
+
+<p>An embedding is a lookup table. It stores one learned vector for each token in the vocabulary. When you pass in token ID 464, it returns the vector stored at row 464.</p>
+
+<pre><code>Token ID 464  →  [0.12, -0.45, 0.78, ..., 0.33]  (d_model dimensions)
+Token ID 3797 →  [-0.23, 0.56, 0.01, ..., -0.89]</code></pre>
+
+<p>These vectors are learned during training. Similar tokens end up with similar vectors, capturing semantic relationships.</p>
+
+<div class="diagram-container">
+<svg width="600" height="160" viewBox="0 0 600 160">
+  <defs><marker id="arrow2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M 0 0 L 10 5 L 0 10 z" fill="#7aa2f7"/></marker></defs>
+  <text x="300" y="20" text-anchor="middle" fill="#c0caf5" font-size="14" font-weight="bold">Embedding: Token ID → Dense Vector</text>
+  <rect x="30" y="60" width="80" height="40" rx="6" fill="#1e2030" stroke="#7aa2f7"/>
+  <text x="70" y="85" text-anchor="middle" fill="#7aa2f7" font-size="14">ID: 464</text>
+  <line x1="120" y1="80" x2="180" y2="80" stroke="#565f89" marker-end="url(#arrow2)"/>
+  <rect x="190" y="40" width="120" height="80" rx="8" fill="#1e2030" stroke="#bb9af7"/>
+  <text x="250" y="70" text-anchor="middle" fill="#bb9af7" font-size="12">nn.Embedding</text>
+  <text x="250" y="90" text-anchor="middle" fill="#565f89" font-size="11">Lookup Table</text>
+  <text x="250" y="105" text-anchor="middle" fill="#565f89" font-size="10">(vocab_size, d_model)</text>
+  <line x1="320" y1="80" x2="380" y2="80" stroke="#565f89" marker-end="url(#arrow2)"/>
+  <rect x="390" y="55" width="180" height="50" rx="6" fill="#1e2030" stroke="#9ece6a"/>
+  <text x="480" y="78" text-anchor="middle" fill="#9ece6a" font-size="12">[0.12, -0.45, 0.78, ...]</text>
+  <text x="480" y="95" text-anchor="middle" fill="#565f89" font-size="10">d_model dimensions</text>
+</svg>
+</div>
+
+<hr>
+
+<h2 id="token-embedding">Token Embedding</h2>
+
+<h3>The Lookup Table</h3>
+
+<p>The simplest embedding is <code>nn.Embedding(vocab_size, d_model)</code>. It creates a matrix of shape <code>(vocab_size, d_model)</code> filled with random values. During training, these values are updated by backpropagation.</p>
+
+<pre><code>self.embedding = nn.Embedding(vocab_size, d_model)</code></pre>
+
+<p>When you pass in a tensor of token IDs, it simply indexes into this matrix:</p>
+
+<pre><code>def forward(self, x: torch.Tensor) -> torch.Tensor:
+    return self.embedding(x)  # shape: (batch, seq_len, d_model)</code></pre>
+
+<h3>Scaling by sqrt(d_model)</h3>
+
+<p>In the original Transformer paper (Vaswani et al., 2017), embeddings are scaled by the square root of the model dimension:</p>
+
+<pre><code>return self.embedding(x) * math.sqrt(self.d_model)</code></pre>
+
+<p>Why? Without scaling, the magnitude of the embeddings depends on <code>d_model</code>. Larger dimensions mean larger dot products in the attention mechanism, which makes the softmax distribution sharper (more peaked). Scaling by <code>sqrt(d_model)</code> keeps the dot products in a consistent range regardless of the embedding dimension.</p>
+
+<div class="key-point">
+This is a simple but important detail. Many implementations omit it, but it matters for training stability.
+</div>
+
+<hr>
+
+<h2 id="positional-encoding">Positional Encoding</h2>
+
+<h3>The Problem: Permutation Invariance</h3>
+
+<p>Transformers process all tokens in parallel. Unlike RNNs, they have no inherent sense of order. Without positional information, the model sees <code>"The cat sat"</code> and <code>"sat cat The"</code> as identical &mdash; just a bag of tokens.</p>
+
+<p>We need to inject position information somehow. There are two main approaches:</p>
+
+<ol>
+  <li><strong>Absolute positional encoding</strong>: Add a unique vector to each position's embedding.</li>
+  <li><strong>Relative positional encoding</strong>: Encode the distance between pairs of positions.</li>
+</ol>
+
+<h3>Absolute Positional Encoding (Sinusoidal)</h3>
+
+<p>The original Transformer used sinusoidal functions:</p>
+
+<pre><code>PE(pos, 2i)   = sin(pos / 10000^(2i/d_model))
+PE(pos, 2i+1) = cos(pos / 10000^(2i/d_model))</code></pre>
+
+<p>Each position gets a unique pattern of sines and cosines. These patterns are added to the token embeddings before the first attention layer.</p>
+
+<p><strong>Pros:</strong> Simple, no learned parameters, works for any sequence length.<br>
+<strong>Cons:</strong> Added to embeddings, so position information mixes with token information in the first layer.</p>
+
+<h3>Relative Positional Encoding</h3>
+
+<p>Relative approaches encode the distance between positions rather than absolute position. The intuition: what matters is not "this is position 5" but "this token is 3 positions away from that token."</p>
+
+<p><strong>RoPE</strong> is a relative positional encoding that works by rotating vectors. It is used in LLaMA, Mistral, Qwen, and many modern LLMs.</p>
+
+<hr>
+
+<h2 id="rope">Rotary Positional Embedding (RoPE)</h2>
+
+<h3 id="rope-intuition">Intuition: Rotating Vectors</h3>
+
+<p>Imagine you have a vector in 2D. You can represent its direction as an angle from the x-axis. Now imagine you have two vectors at different positions. The angle between them encodes their relative position.</p>
+
+<p>RoPE generalizes this idea to high dimensions. For a vector of dimension <code>d_model</code>, we treat it as <code>d_model/2</code> independent 2D vectors (pairs of dimensions). Each pair is rotated by an angle that depends on the position.</p>
+
+<pre><code>Position 0: rotate by 0 * theta
+Position 1: rotate by 1 * theta
+Position 2: rotate by 2 * theta
+...</code></pre>
+
+<div class="diagram-container">
+<svg width="650" height="220" viewBox="0 0 650 220">
+  <text x="325" y="20" text-anchor="middle" fill="#c0caf5" font-size="14" font-weight="bold">RoPE: Rotating Vectors by Position</text>
+  <!-- Position 0 -->
+  <line x1="100" y1="170" x2="100" y2="100" stroke="#7aa2f7" stroke-width="2" marker-end="url(#arrow2)"/>
+  <text x="100" y="190" text-anchor="middle" fill="#565f89" font-size="11">Pos 0: angle=0</text>
+  <path d="M 110 170 A 20 20 0 0 1 112 152" stroke="#7aa2f7" fill="none" stroke-width="1"/>
+  <!-- Position 1 -->
+  <line x1="250" y1="170" x2="236" y2="105" stroke="#bb9af7" stroke-width="2" marker-end="url(#arrow2)"/>
+  <text x="250" y="190" text-anchor="middle" fill="#565f89" font-size="11">Pos 1: angle=θ</text>
+  <path d="M 260 170 A 20 20 0 0 1 248 154" stroke="#bb9af7" fill="none" stroke-width="1"/>
+  <!-- Position 2 -->
+  <line x1="400" y1="170" x2="370" y2="110" stroke="#9ece6a" stroke-width="2" marker-end="url(#arrow2)"/>
+  <text x="400" y="190" text-anchor="middle" fill="#565f89" font-size="11">Pos 2: angle=2θ</text>
+  <path d="M 410 170 A 20 20 0 0 1 392 156" stroke="#9ece6a" fill="none" stroke-width="1"/>
+  <!-- Position 3 -->
+  <line x1="550" y1="170" x2="505" y2="120" stroke="#ff9e64" stroke-width="2" marker-end="url(#arrow2)"/>
+  <text x="550" y="190" text-anchor="middle" fill="#565f89" font-size="11">Pos 3: angle=3θ</text>
+  <path d="M 560 170 A 20 20 0 0 1 540 158" stroke="#ff9e64" fill="none" stroke-width="1"/>
+  <text x="325" y="215" text-anchor="middle" fill="#565f89" font-size="12">Each position rotates by position × theta. Dot product depends only on relative position.</text>
+</svg>
+</div>
+
+<p>When you compute the dot product between two rotated vectors, the result depends only on the relative position (the difference in rotation angles), not the absolute positions.</p>
+
+<h3 id="rope-math">The Mathematics</h3>
+
+<h4>Step 1: Compute Frequencies</h4>
+
+<p>Each dimension pair has a different rotation frequency:</p>
+
+<pre><code>theta_i = 1 / (base^(2i/d_model))    for i = 0, 1, ..., d_model/2 - 1</code></pre>
+
+<p>where <code>base</code> is typically 10000.0. Lower dimension pairs rotate faster (higher frequency), higher pairs rotate slower (lower frequency).</p>
+
+<pre><code>inv_freq = 1.0 / (base ** (torch.arange(0, d_model, 2).float() / d_model))</code></pre>
+
+<h4>Step 2: Compute Rotation Angles</h4>
+
+<p>For each position <code>m</code> and dimension pair <code>i</code>, the rotation angle is:</p>
+
+<pre><code>angle(m, i) = m * theta_i</code></pre>
+
+<p>This is computed as an outer product:</p>
+
+<pre><code>t = torch.arange(seq_len)           # positions: [0, 1, 2, ...]
+freqs = torch.outer(t, inv_freq)    # shape: (seq_len, d_model/2)</code></pre>
+
+<h4>Step 3: Duplicate and Compute Trig Functions</h4>
+
+<p>Duplicate the frequencies to match all <code>d_model</code> dimensions:</p>
+
+<pre><code>emb = torch.cat([freqs, freqs], dim=-1)  # shape: (seq_len, d_model)
+cos = emb.cos()
+sin = emb.sin()</code></pre>
+
+<h4>Step 4: Apply the Rotation</h4>
+
+<p>For each vector <code>x</code> at position <code>m</code>:</p>
+
+<pre><code>x_rotated = x * cos(m * theta) + rotate_half(x) * sin(m * theta)</code></pre>
+
+<p>where <code>rotate_half(x)</code> swaps and negates pairs:</p>
+
+<pre><code>rotate_half([x1, x2, x3, x4]) = [-x2, x1, -x4, x3]</code></pre>
+
+<p>This is equivalent to applying a 2D rotation matrix to each pair:</p>
+
+<pre><code>[cos(theta)  -sin(theta)] [x1]
+[sin(theta)   cos(theta)] [x2]</code></pre>
+
+<h3>Why RoPE Works</h3>
+
+<p>The key property: when you compute the dot product between two RoPE-rotated vectors at positions <code>m</code> and <code>n</code>, the result depends only on <code>m - n</code> (the relative position), not on <code>m</code> and <code>n</code> individually.</p>
+
+<p>This means:</p>
+<ul>
+  <li>The model can attend to relative positions naturally</li>
+  <li>No learned positional parameters are needed</li>
+  <li>The model can generalize to longer sequences than seen during training</li>
+</ul>
+
+<h3 id="rope-code">Code Walkthrough</h3>
+
+<p>Here is the complete <code>RotaryPositionalEmbedding</code> class:</p>
+
+<pre><code>class RotaryPositionalEmbedding(nn.Module):
+    def __init__(self, d_model, max_seq_len=2048, base=10000.0):
+        super().__init__()
+        self.d_model = d_model
+        # 1. Compute inverse frequencies
+        inv_freq = 1.0 / (base ** (torch.arange(0, d_model, 2).float() / d_model))
+        self.register_buffer("inv_freq", inv_freq)
+
+    def _build_cache(self, seq_len, device):
+        # 2. Compute angles for all positions
+        t = torch.arange(seq_len, device=device, dtype=self.inv_freq.dtype)
+        freqs = torch.outer(t, self.inv_freq)  # (seq_len, d_model/2)
+        emb = torch.cat([freqs, freqs], dim=-1)  # (seq_len, d_model)
+        return emb.cos(), emb.sin()
+
+    def _rotate_half(self, x):
+        # 3. Swap and negate: [x1, x2] -> [-x2, x1]
+        x1 = x[..., :x.shape[-1] // 2]
+        x2 = x[..., x.shape[-1] // 2:]
+        return torch.cat([-x2, x1], dim=-1)
+
+    def forward(self, x):
+        seq_len = x.shape[1]
+        cos, sin = self._build_cache(seq_len, x.device)
+        cos = cos[:seq_len].unsqueeze(0)  # add batch dim
+        sin = sin[:seq_len].unsqueeze(0)
+        # 4. Apply rotation
+        return x * cos + self._rotate_half(x) * sin</code></pre>
+
+<p><strong>Key observations:</strong></p>
+<ul>
+  <li><code>_build_cache</code> is called on every forward pass in this simple implementation. In production, you would cache the cos/sin tensors.</li>
+  <li><code>_rotate_half</code> implements the 90-degree rotation for each dimension pair.</li>
+  <li>The forward method applies the rotation formula: <code>x * cos + rotate(x) * sin</code>.</li>
+</ul>
+
+<hr>
+
+<h2 id="how-to-run">How to Run</h2>
+
+<h3>Run Tests</h3>
+
+<pre><code>cd /path/to/llm-from-scratch
+pytest 01-foundations/02_embedding/tests.py -v</code></pre>
+
+<hr>
+
+<h2 id="exercises">Exercises</h2>
+
+<p>Open <code>exercise.py</code> to practice implementing embeddings yourself.</p>
+
+<h3>Exercise Order</h3>
+
+<ol>
+  <li><code>TokenEmbeddingExercise.__init__</code> &mdash; Create the embedding lookup table</li>
+  <li><code>TokenEmbeddingExercise.forward</code> &mdash; Look up embeddings and scale by sqrt(d_model)</li>
+  <li><code>RotaryPositionalEmbeddingExercise.__init__</code> &mdash; Compute inverse frequencies</li>
+  <li><code>RotaryPositionalEmbeddingExercise._build_cache</code> &mdash; Precompute cos/sin values</li>
+  <li><code>RotaryPositionalEmbeddingExercise._rotate_half</code> &mdash; Implement the 90-degree rotation</li>
+  <li><code>RotaryPositionalEmbeddingExercise.forward</code> &mdash; Apply the rotation formula</li>
+</ol>
+
+<h3>Tips</h3>
+
+<ul>
+  <li>Start with <code>TokenEmbedding</code>. It is just a lookup table with scaling.</li>
+  <li>For RoPE, focus on understanding <code>_rotate_half</code> first. It is the core operation.</li>
+  <li>The <code>_build_cache</code> method precomputes all the rotation angles. Think of it as a table of cos/sin values indexed by position and dimension.</li>
+  <li>The forward method combines everything: <code>x * cos + rotate_half(x) * sin</code>.</li>
+</ul>
+
+<hr>
+
+<h2 id="takeaways">Key Takeaways</h2>
+
+<div class="key-point">
+<ol>
+  <li><strong>Embeddings convert discrete tokens to continuous vectors.</strong> The embedding layer is a learned lookup table mapping token IDs to dense vectors.</li>
+  <li><strong>Scaling by sqrt(d_model) stabilizes training.</strong> It keeps the magnitude of embeddings consistent regardless of the model dimension.</li>
+  <li><strong>Positional information is essential for transformers.</strong> Without it, the model cannot distinguish between different orderings of the same tokens.</li>
+  <li><strong>RoPE encodes position through rotation.</strong> Each dimension pair is rotated by an angle proportional to the position. The dot product between two rotated vectors depends only on their relative position.</li>
+  <li><strong>RoPE is relative, not absolute.</strong> Unlike sinusoidal positional encoding (which is added to embeddings), RoPE is applied in the attention mechanism and naturally captures relative distances.</li>
+</ol>
+</div>
+
+<hr>
+
+<h2 id="further-reading">Further Reading</h2>
+
+<ul>
+  <li><a href="https://arxiv.org/abs/2104.09864">RoPE Paper (Su et al., 2021)</a> &mdash; Original paper introducing Rotary Position Embedding</li>
+  <li><a href="https://arxiv.org/abs/1706.03762">Attention Is All You Need (Vaswani et al., 2017)</a> &mdash; Original Transformer paper with sinusoidal positional encoding</li>
+  <li><a href="https://arxiv.org/abs/2302.13971">LLaMA Paper (Touvron et al., 2023)</a> &mdash; Uses RoPE in a modern LLM</li>
+  <li><a href="https://jalammar.github.io/illustrated-transformer/">The Illustrated Transformer</a> &mdash; Visual explanation of embeddings and positional encoding</li>
+</ul>
+
+</div>
+</body>
+</html>
